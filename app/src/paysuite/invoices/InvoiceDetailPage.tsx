@@ -1,11 +1,14 @@
 import { useState } from "react";
-import { Link, useParams } from "react-router";
+import { Link, useParams, useSearchParams } from "react-router";
 import {
   useQuery,
   getInvoice,
   recordInvoicePayment,
   getPaymentMethods,
   createPaymentMethod,
+  createInvoiceCheckoutSession,
+  createGatewayPaymentIntent,
+  sendInvoiceEmail,
 } from "wasp/client/operations";
 import {
   PageShell,
@@ -20,11 +23,18 @@ import { Label } from "../../client/components/ui/label";
 
 export default function InvoiceDetailPage() {
   const { id } = useParams();
+  const [search] = useSearchParams();
   const { data: inv, isLoading, refetch } = useQuery(getInvoice, { id: id! });
   const { data: methods, refetch: refetchMethods } = useQuery(getPaymentMethods);
   const [amount, setAmount] = useState("");
   const [methodId, setMethodId] = useState("");
   const [paying, setPaying] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<string | null>(
+    search.get("paid") === "1"
+      ? "Stripe payment completed. Refresh if totals look stale."
+      : null,
+  );
   const [error, setError] = useState<string | null>(null);
 
   if (isLoading || !inv) {
@@ -53,6 +63,7 @@ export default function InvoiceDetailPage() {
         paymentMethodId: methodId || methods?.[0]?.id || null,
       });
       setAmount("");
+      setMessage("Payment recorded");
       refetch();
     } catch (err: any) {
       setError(err?.message || "Payment failed");
@@ -61,16 +72,112 @@ export default function InvoiceDetailPage() {
     }
   }
 
+  async function stripeCollect() {
+    setBusy(true);
+    setError(null);
+    try {
+      const { url } = await createInvoiceCheckoutSession({ id: inv.id });
+      if (!url) throw new Error("No checkout URL returned");
+      window.location.href = url;
+    } catch (err: any) {
+      setError(
+        err?.message ||
+          "Stripe checkout failed. Ensure STRIPE_API_KEY is configured.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function emailInvoice() {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await sendInvoiceEmail({ id: inv.id });
+      setMessage(`Invoice emailed to ${res.to}`);
+    } catch (err: any) {
+      setError(err?.message || "Email failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <PageShell
       title={inv.invoiceFullNumber}
       subtitle={`Customer: ${customerName(inv.customer)}`}
       actions={
-        <Button asChild variant="outline">
-          <Link to="/invoices">Back to list</Link>
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button asChild variant="outline">
+            <Link to={`/invoices/${inv.id}/print`}>PDF / Print</Link>
+          </Button>
+          <Button variant="outline" disabled={busy} onClick={emailInvoice}>
+            Email customer
+          </Button>
+          {inv.dueAmount > 0 && (
+            <>
+              <Button disabled={busy} onClick={stripeCollect}>
+                Collect via Stripe
+              </Button>
+              <Button
+                variant="outline"
+                disabled={busy}
+                onClick={async () => {
+                  setBusy(true);
+                  setError(null);
+                  try {
+                    const intent = await createGatewayPaymentIntent({
+                      id: inv.id,
+                      gateway: "paypal",
+                    });
+                    if (intent.url) window.open(intent.url, "_blank");
+                    setMessage(intent.instructions);
+                  } catch (e: any) {
+                    setError(e?.message || "PayPal intent failed");
+                  } finally {
+                    setBusy(false);
+                  }
+                }}
+              >
+                PayPal
+              </Button>
+              <Button
+                variant="outline"
+                disabled={busy}
+                onClick={async () => {
+                  setBusy(true);
+                  setError(null);
+                  try {
+                    const intent = await createGatewayPaymentIntent({
+                      id: inv.id,
+                      gateway: "razorpay",
+                    });
+                    setMessage(
+                      `${intent.instructions} Ref: ${intent.reference}`,
+                    );
+                  } catch (e: any) {
+                    setError(e?.message || "Razorpay intent failed");
+                  } finally {
+                    setBusy(false);
+                  }
+                }}
+              >
+                Razorpay
+              </Button>
+            </>
+          )}
+          <Button asChild variant="ghost">
+            <Link to="/invoices">Back</Link>
+          </Button>
+        </div>
       }
     >
+      {message && (
+        <div className="mb-4 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-800">
+          {message}
+        </div>
+      )}
+
       <div className="mb-6 grid gap-4 sm:grid-cols-4">
         <Info label="Status" value={<StatusBadge status={inv.status} />} />
         <Info label="Grand total" value={money(inv.grandTotal)} />
@@ -78,7 +185,7 @@ export default function InvoiceDetailPage() {
         <Info
           label="Due"
           value={
-            <span className="text-rose-600 font-semibold">
+            <span className="font-semibold text-rose-600">
               {money(inv.dueAmount)}
             </span>
           }
@@ -86,7 +193,10 @@ export default function InvoiceDetailPage() {
       </div>
 
       <h2 className="mb-2 font-semibold">Line items</h2>
-      <DataTable headers={["Product", "Qty", "Price", "Line total"]} empty={!inv.details?.length}>
+      <DataTable
+        headers={["Product", "Qty", "Price", "Line total"]}
+        empty={!inv.details?.length}
+      >
         {inv.details?.map((d: any) => (
           <tr key={d.id}>
             <td className="px-4 py-2">{d.product?.name}</td>
@@ -99,7 +209,7 @@ export default function InvoiceDetailPage() {
 
       {inv.dueAmount > 0 && (
         <div className="bg-card mt-8 max-w-md space-y-3 rounded-xl border p-4">
-          <h3 className="font-semibold">Record due payment</h3>
+          <h3 className="font-semibold">Record manual payment</h3>
           <div className="space-y-1.5">
             <Label>Amount</Label>
             <Input
@@ -132,10 +242,14 @@ export default function InvoiceDetailPage() {
         </div>
       )}
 
+      {error && inv.dueAmount <= 0 && (
+        <p className="mt-4 text-sm text-rose-600">{error}</p>
+      )}
+
       {!!inv.transactions?.length && (
         <>
           <h2 className="mt-8 mb-2 font-semibold">Payments</h2>
-          <DataTable headers={["Date", "Amount", "Method"]}>
+          <DataTable headers={["Date", "Amount", "Method", "Note"]}>
             {inv.transactions.map((t: any) => (
               <tr key={t.id}>
                 <td className="px-4 py-2">
@@ -143,6 +257,7 @@ export default function InvoiceDetailPage() {
                 </td>
                 <td className="px-4 py-2">{money(t.amount)}</td>
                 <td className="px-4 py-2">{t.paymentMethod?.name || "—"}</td>
+                <td className="px-4 py-2">{t.note || "—"}</td>
               </tr>
             ))}
           </DataTable>

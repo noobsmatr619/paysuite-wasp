@@ -14,6 +14,7 @@ import {
 import { getPaymentPlanIdByPaymentProcessorPlanId } from "../paymentProcessorPlans";
 import { updateUserCredits, updateUserSubscription } from "../user";
 import { stripeClient } from "./stripeClient";
+import { applyStripeInvoicePayment } from "../../paysuite/payments/invoiceCheckout";
 
 /**
  * Stripe requires a raw request to construct events successfully.
@@ -51,6 +52,9 @@ export const stripeWebhook: PaymentsWebhook = async (
         break;
       case "customer.subscription.deleted":
         await handleCustomerSubscriptionDeleted(event, prismaUserDelegate);
+        break;
+      case "checkout.session.completed":
+        await handlePaySuiteInvoiceCheckout(event, context);
         break;
       default:
         throw new UnhandledWebhookEventError(event.type);
@@ -180,6 +184,34 @@ async function handleCustomerSubscriptionUpdated(
       html: "We hate to see you go. Here is a sweet offer...",
     });
   }
+}
+
+async function handlePaySuiteInvoiceCheckout(
+  event: Stripe.Event,
+  context: { entities: { Invoice: any; Transaction: any; PaymentMethod: any } },
+) {
+  const session = event.data.object as Stripe.Checkout.Session;
+  const invoiceId = session.metadata?.paysuiteInvoiceId;
+  const type = session.metadata?.paysuiteType;
+  if (!invoiceId || type !== "invoice_due_payment") {
+    // Not a PaySuite customer invoice payment — ignore quietly.
+    return;
+  }
+  if (session.payment_status !== "paid" && session.status !== "complete") {
+    return;
+  }
+  const amountCents =
+    session.amount_total ??
+    (typeof session.amount_subtotal === "number"
+      ? session.amount_subtotal
+      : 0);
+  if (!amountCents) return;
+
+  await applyStripeInvoicePayment(context.entities, {
+    invoiceId,
+    amountCents,
+    stripeSessionId: session.id,
+  });
 }
 
 function getOpenSaasSubscriptionStatus(

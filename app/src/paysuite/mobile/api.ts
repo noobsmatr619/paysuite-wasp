@@ -1,30 +1,36 @@
 import { HttpError } from "wasp/server";
 import type { MobileApi } from "wasp/server/api";
 import type { PrismaClient } from "@prisma/client";
+import { resolveBearerToken, signMobileToken } from "./jwt";
+import { buildDocumentHtml, customerDisplay } from "../documents/pdfHtml";
 
-/**
- * Lightweight JSON helpers for the Expo mobile client.
- * Auth: pass `Authorization: Bearer <userId>` in development
- * (Wasp session cookies work for web; mobile uses this bridge token).
- *
- * For production, swap this for proper JWT/Sanctum-style tokens.
- */
 async function resolveUser(
-  req: { headers: Record<string, any> },
+  req: { headers: Record<string, any>; path?: string; method?: string; body?: any },
   entities: { User: PrismaClient["user"] },
 ) {
+  // Public auth route handled separately
   const auth = req.headers["authorization"] || req.headers["Authorization"];
   if (!auth || typeof auth !== "string") {
     throw new HttpError(401, "Missing Authorization header");
   }
-  const token = auth.replace(/^Bearer\s+/i, "").trim();
-  const user = await entities.User.findUnique({ where: { id: token } });
-  if (!user) throw new HttpError(401, "Invalid token");
-  return user;
+  try {
+    const { userId } = resolveBearerToken(auth);
+    const user = await entities.User.findUnique({ where: { id: userId } });
+    if (!user) throw new HttpError(401, "Invalid token user");
+    return user;
+  } catch (e: any) {
+    throw new HttpError(401, e?.message || "Invalid token");
+  }
 }
 
 async function tenantIdFor(
-  user: { id: string; tenantId: string | null; username: string | null; email: string | null; companyName: string | null },
+  user: {
+    id: string;
+    tenantId: string | null;
+    username: string | null;
+    email: string | null;
+    companyName: string | null;
+  },
   entities: {
     User: PrismaClient["user"];
     Tenant: PrismaClient["tenant"];
@@ -49,14 +55,66 @@ async function tenantIdFor(
   return tenant.id;
 }
 
+function normalizePath(reqPath: string) {
+  return (reqPath || "")
+    .replace(/^\/api\/mobile\/?/, "")
+    .replace(/^\//, "");
+}
+
 export const mobileApi: MobileApi = async (req, res, context) => {
   try {
-    const path = (req.path || "").replace(/^\/api\/mobile\/?/, "");
+    const path = normalizePath(req.path || "");
     const method = (req.method || "GET").toUpperCase();
+
+    // ── Auth: issue JWT ─────────────────────────────────────────────
+    if (method === "POST" && (path === "auth/login" || path === "login")) {
+      const body = req.body || {};
+      const email = String(body.email || "")
+        .trim()
+        .toLowerCase();
+      const password = String(body.password || "");
+      if (!email) throw new HttpError(400, "Email is required");
+
+      const user = await context.entities.User.findFirst({
+        where: { email: { equals: email, mode: "insensitive" } },
+      });
+      if (!user) throw new HttpError(401, "Invalid credentials");
+
+      // Dev-friendly auth:
+      // - If body.password equals user.id → accept (legacy)
+      // - If MOBILE_SHARED_PASSWORD is set → must match
+      // - Else accept any password with length >= 4 in non-production
+      // - In production without MOBILE_SHARED_PASSWORD, only user.id token login
+      const shared = process.env.MOBILE_SHARED_PASSWORD;
+      const isProd = process.env.NODE_ENV === "production";
+      let ok = false;
+      if (password && password === user.id) ok = true;
+      else if (shared && password === shared) ok = true;
+      else if (!isProd && password.length >= 4) ok = true;
+      if (!ok) throw new HttpError(401, "Invalid credentials");
+
+      const token = signMobileToken(user.id, user.email);
+      return res.json({
+        token,
+        tokenType: "Bearer",
+        expiresInDays: 7,
+        user: {
+          id: user.id,
+          email: user.email,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          companyName: user.companyName,
+          phoneNumber: user.phoneNumber,
+          address: user.address,
+          taxNo: user.taxNo,
+          tenantId: user.tenantId,
+        },
+      });
+    }
+
     const user = await resolveUser(req as any, context.entities);
     const tenantId = await tenantIdFor(user as any, context.entities);
 
-    // GET statistics
     if (method === "GET" && (path === "statistics" || path === "")) {
       const [customers, invoices, products, expenses] = await Promise.all([
         context.entities.Customer.count({ where: { tenantId } }),
@@ -84,11 +142,12 @@ export const mobileApi: MobileApi = async (req, res, context) => {
     }
 
     if (method === "GET" && path === "customers") {
-      const rows = await context.entities.Customer.findMany({
-        where: { tenantId },
-        orderBy: { createdAt: "desc" },
-      });
-      return res.json(rows);
+      return res.json(
+        await context.entities.Customer.findMany({
+          where: { tenantId },
+          orderBy: { createdAt: "desc" },
+        }),
+      );
     }
 
     if (method === "POST" && path === "customers") {
@@ -123,12 +182,52 @@ export const mobileApi: MobileApi = async (req, res, context) => {
       );
     }
 
-    if (method === "GET" && path === "products") {
-      const rows = await context.entities.Product.findMany({
-        where: { tenantId },
-        orderBy: { createdAt: "desc" },
+    // GET invoices/:id/document
+    if (method === "GET" && path.startsWith("invoices/") && path.endsWith("/document")) {
+      const id = path.split("/")[1];
+      const invoice = await context.entities.Invoice.findFirst({
+        where: { id, tenantId },
+        include: {
+          customer: true,
+          details: { include: { product: true } },
+          taxes: { include: { tax: true } },
+          tenant: true,
+        },
       });
-      return res.json(rows);
+      if (!invoice) throw new HttpError(404, "Invoice not found");
+      const html = buildDocumentHtml({
+        fullNumber: invoice.invoiceFullNumber,
+        dateLabel: `Issued ${invoice.issueDate.toLocaleDateString()}`,
+        status: invoice.status,
+        subTotal: invoice.subTotal,
+        discountAmount: invoice.discountAmount,
+        grandTotal: invoice.grandTotal,
+        note: invoice.note,
+        companyName: invoice.tenant.name,
+        customerName: customerDisplay(invoice.customer),
+        customerEmail: invoice.customer.email,
+        customerAddress: invoice.customer.address,
+        lines: invoice.details.map((d) => ({
+          name: d.product.name,
+          quantity: d.quantity,
+          price: d.price,
+        })),
+        taxes: invoice.taxes.map((t) => ({
+          name: t.tax.name,
+          rate: t.rate,
+          amount: t.amount,
+        })),
+      });
+      return res.json({ html, fullNumber: invoice.invoiceFullNumber });
+    }
+
+    if (method === "GET" && path === "products") {
+      return res.json(
+        await context.entities.Product.findMany({
+          where: { tenantId },
+          orderBy: { createdAt: "desc" },
+        }),
+      );
     }
 
     if (method === "POST" && path === "products") {
@@ -146,39 +245,43 @@ export const mobileApi: MobileApi = async (req, res, context) => {
     }
 
     if (method === "GET" && path === "estimates") {
-      const rows = await context.entities.Estimate.findMany({
-        where: { tenantId },
-        include: { customer: true },
-        orderBy: { createdAt: "desc" },
-      });
-      return res.json(rows);
+      return res.json(
+        await context.entities.Estimate.findMany({
+          where: { tenantId },
+          include: { customer: true },
+          orderBy: { createdAt: "desc" },
+        }),
+      );
     }
 
     if (method === "GET" && path === "expenses") {
-      const rows = await context.entities.Expense.findMany({
-        where: { tenantId },
-        include: { category: true },
-        orderBy: { date: "desc" },
-      });
-      return res.json(rows);
+      return res.json(
+        await context.entities.Expense.findMany({
+          where: { tenantId },
+          include: { category: true },
+          orderBy: { date: "desc" },
+        }),
+      );
     }
 
     if (method === "GET" && path === "tickets") {
-      const rows = await context.entities.Ticket.findMany({
-        where: { tenantId },
-        include: { department: true, priority: true },
-        orderBy: { createdAt: "desc" },
-      });
-      return res.json(rows);
+      return res.json(
+        await context.entities.Ticket.findMany({
+          where: { tenantId },
+          include: { department: true, priority: true },
+          orderBy: { createdAt: "desc" },
+        }),
+      );
     }
 
     if (method === "GET" && path === "transactions") {
-      const rows = await context.entities.Transaction.findMany({
-        where: { tenantId },
-        include: { customer: true, paymentMethod: true },
-        orderBy: { receivedOn: "desc" },
-      });
-      return res.json(rows);
+      return res.json(
+        await context.entities.Transaction.findMany({
+          where: { tenantId },
+          include: { customer: true, paymentMethod: true },
+          orderBy: { receivedOn: "desc" },
+        }),
+      );
     }
 
     if (method === "GET" && path === "my-profile") {
@@ -202,6 +305,12 @@ export const mobileApi: MobileApi = async (req, res, context) => {
         orderBy: { createdAt: "desc" },
       });
       return res.json({ subscriber });
+    }
+
+    // Refresh token for authenticated user
+    if (method === "POST" && path === "auth/refresh") {
+      const token = signMobileToken(user.id, user.email);
+      return res.json({ token, tokenType: "Bearer", expiresInDays: 7 });
     }
 
     throw new HttpError(404, `Unknown mobile route: ${method} ${path}`);

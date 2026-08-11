@@ -312,6 +312,42 @@ action recordInvoicePayment {
   fn: import { recordInvoicePayment } from "@src/paysuite/invoices/operations",
   entities: [User, Tenant, Plan, Subscriber, Invoice, Transaction, PaymentMethod]
 }
+
+action createInvoiceCheckoutSession {
+  fn: import { createInvoiceCheckoutSession } from "@src/paysuite/payments/invoiceCheckout",
+  entities: [User, Tenant, Plan, Subscriber, Invoice, Customer]
+}
+
+action getInvoicePaymentLink {
+  fn: import { getInvoicePaymentLink } from "@src/paysuite/payments/invoiceCheckout",
+  entities: [User, Tenant, Plan, Subscriber, Invoice, Customer]
+}
+
+action createGatewayPaymentIntent {
+  fn: import { createGatewayPaymentIntent } from "@src/paysuite/payments/gatewayHelpers",
+  entities: [User, Tenant, Plan, Subscriber, Invoice, Customer]
+}
+
+route InvoicePrintRoute { path: "/invoices/:id/print", to: InvoicePrintPage }
+page InvoicePrintPage {
+  authRequired: true,
+  component: import InvoicePrintPage from "@src/paysuite/documents/InvoicePrintPage"
+}
+
+query getInvoiceDocument {
+  fn: import { getInvoiceDocument } from "@src/paysuite/documents/operations",
+  entities: [User, Tenant, Plan, Subscriber, Invoice, Customer, InvoiceDetail, InvoiceTax, Product, Tax]
+}
+
+action sendInvoiceEmail {
+  fn: import { sendInvoiceEmail } from "@src/paysuite/documents/operations",
+  entities: [User, Tenant, Plan, Subscriber, Invoice, Customer, InvoiceDetail, InvoiceTax, Product, Tax]
+}
+
+action issueMobileToken {
+  fn: import { issueMobileToken } from "@src/paysuite/mobile/issueToken",
+  entities: [User]
+}
 //#endregion
 
 //#region Estimates
@@ -366,6 +402,22 @@ action changeEstimateStatus {
 action convertEstimateToInvoice {
   fn: import { convertEstimateToInvoice } from "@src/paysuite/estimates/operations",
   entities: [User, Tenant, Plan, Subscriber, Estimate, EstimateDetail, EstimateTax, Invoice, InvoiceDetail, InvoiceTax]
+}
+
+route EstimatePrintRoute { path: "/estimates/:id/print", to: EstimatePrintPage }
+page EstimatePrintPage {
+  authRequired: true,
+  component: import EstimatePrintPage from "@src/paysuite/documents/EstimatePrintPage"
+}
+
+query getEstimateDocument {
+  fn: import { getEstimateDocument } from "@src/paysuite/documents/operations",
+  entities: [User, Tenant, Plan, Subscriber, Estimate, Customer, EstimateDetail, EstimateTax, Product, Tax]
+}
+
+action sendEstimateEmail {
+  fn: import { sendEstimateEmail } from "@src/paysuite/documents/operations",
+  entities: [User, Tenant, Plan, Subscriber, Estimate, Customer, EstimateDetail, EstimateTax, Product, Tax]
 }
 //#endregion
 
@@ -628,7 +680,7 @@ query getTenantReports {
 
 query getLandlordReports {
   fn: import { getLandlordReports } from "@src/paysuite/reports/operations",
-  entities: [User, Tenant, Plan, Subscriber, Ticket, BillingHistory, Department, Priority]
+  entities: [User, Tenant, Plan, Subscriber, Ticket, BillingHistory, Department, Priority, Transaction]
 }
 
 job recurringInvoicesJob {
@@ -648,7 +700,8 @@ api mobileApi {
   fn: import { mobileApi } from "@src/paysuite/mobile/api",
   entities: [
     User, Tenant, Plan, Subscriber, Customer, Product, Invoice, Estimate,
-    Expense, Ticket, Transaction, PaymentMethod, Category, Department, Priority
+    Expense, Ticket, Transaction, PaymentMethod, Category, Department, Priority,
+    InvoiceDetail, InvoiceTax, Tax, EstimateDetail, EstimateTax
   ],
   httpRoute: (ALL, "/api/mobile/*")
 }
@@ -673,7 +726,7 @@ action generateCheckoutSession {
 
 api paymentsWebhook {
   fn: import { paymentsWebhook } from "@src/payment/webhook",
-  entities: [User],
+  entities: [User, Invoice, Transaction, PaymentMethod],
   middlewareConfigFn: import { paymentsMiddlewareConfigFn } from "@src/payment/webhook",
   httpRoute: (POST, "/payments-webhook")
 }

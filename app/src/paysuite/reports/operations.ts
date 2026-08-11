@@ -61,29 +61,37 @@ export const getLandlordReports: GetLandlordReports<void, any> = async (
   if (!context.user) throw new HttpError(401);
   if (!context.user.isAdmin) throw new HttpError(403, "Admin only");
 
-  const [tenants, subscribers, plans, tickets, billings] = await Promise.all([
-    context.entities.Tenant.findMany({
-      where: { isDeleted: false },
-      orderBy: { createdAt: "desc" },
-      take: 50,
-    }),
-    context.entities.Subscriber.findMany({
-      include: { plan: true, tenant: true, user: true },
-      orderBy: { createdAt: "desc" },
-      take: 50,
-    }),
-    context.entities.Plan.findMany({ where: { status: "active" } }),
-    context.entities.Ticket.findMany({
-      orderBy: { createdAt: "desc" },
-      take: 10,
-      include: { department: true, priority: true, tenant: true },
-    }),
-    context.entities.BillingHistory.findMany({
-      orderBy: { createdAt: "desc" },
-      take: 20,
-      include: { plan: true, tenant: true },
-    }),
-  ]);
+  const year = new Date().getFullYear();
+  const from = new Date(year, 0, 1);
+
+  const [tenants, subscribers, plans, tickets, billings, platformTx] =
+    await Promise.all([
+      context.entities.Tenant.findMany({
+        where: { isDeleted: false },
+        orderBy: { createdAt: "desc" },
+        take: 50,
+      }),
+      context.entities.Subscriber.findMany({
+        include: { plan: true, tenant: true, user: true },
+        orderBy: { createdAt: "desc" },
+        take: 50,
+      }),
+      context.entities.Plan.findMany({ where: { status: "active" } }),
+      context.entities.Ticket.findMany({
+        orderBy: { createdAt: "desc" },
+        take: 10,
+        include: { department: true, priority: true, tenant: true },
+      }),
+      context.entities.BillingHistory.findMany({
+        orderBy: { createdAt: "desc" },
+        take: 20,
+        include: { plan: true, tenant: true },
+      }),
+      context.entities.BillingHistory.findMany({
+        where: { createdAt: { gte: from }, status: "paid" },
+        select: { amount: true, createdAt: true },
+      }),
+    ]);
 
   const activeTenants = tenants.filter((t) => t.status === "active").length;
   const mrr = subscribers.reduce((s, sub) => {
@@ -93,6 +101,22 @@ export const getLandlordReports: GetLandlordReports<void, any> = async (
     return s + (price || 0);
   }, 0);
 
+  const monthlyRevenue = Array.from({ length: 12 }, (_, i) => {
+    const key = `${year}-${String(i + 1).padStart(2, "0")}`;
+    return { month: key, amount: 0 };
+  });
+  for (const b of platformTx) {
+    const m = b.createdAt.getMonth();
+    monthlyRevenue[m].amount += b.amount;
+  }
+
+  const ticketsByStatus = ["pending", "open", "solved", "rejected"].map(
+    (status) => ({
+      status,
+      count: tickets.filter((t) => t.status === status).length,
+    }),
+  );
+
   return {
     companyInsights: {
       totalTenants: tenants.length,
@@ -100,6 +124,7 @@ export const getLandlordReports: GetLandlordReports<void, any> = async (
       suspendedTenants: tenants.filter((t) => t.status === "suspended").length,
       expiredTenants: tenants.filter((t) => t.status === "expired").length,
       mrr,
+      ytdBillingRevenue: platformTx.reduce((s, b) => s + b.amount, 0),
     },
     planSummary: plans.map((p) => ({
       id: p.id,
@@ -108,6 +133,8 @@ export const getLandlordReports: GetLandlordReports<void, any> = async (
       frequency: p.frequency,
       subscribers: subscribers.filter((s) => s.planId === p.id).length,
     })),
+    monthlyRevenue,
+    ticketsByStatus,
     recentTickets: tickets,
     recentBillings: billings,
     tenants,

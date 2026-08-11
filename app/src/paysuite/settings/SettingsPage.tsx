@@ -13,6 +13,7 @@ import {
   getMyPlan,
   ensureDefaultPlans,
   updateMyProfile,
+  issueMobileToken,
 } from "wasp/client/operations";
 import { useAuth } from "wasp/client/auth";
 import { PageShell, money, DataTable } from "../shared/ui";
@@ -35,6 +36,7 @@ export default function SettingsPage() {
   const [noteBody, setNoteBody] = useState("");
   const [noteType, setNoteType] = useState("invoice");
   const [methodName, setMethodName] = useState("");
+  const [mobileToken, setMobileToken] = useState<string | null>(null);
   const [profile, setProfile] = useState({
     firstName: user?.firstName || "",
     lastName: user?.lastName || "",
@@ -50,6 +52,28 @@ export default function SettingsPage() {
       subtitle="Taxes, notes, payment methods, plan usage, and profile"
     >
       <div className="grid gap-8 lg:grid-cols-2">
+        <section className="bg-card space-y-3 rounded-xl border p-4 lg:col-span-2">
+          <h2 className="font-semibold">Mobile app JWT</h2>
+          <p className="text-muted-foreground text-sm">
+            Mint a bearer token for the Expo app when using{" "}
+            <code>EXPO_PUBLIC_API_URL</code> (server host, not port 3000).
+          </p>
+          <Button
+            variant="outline"
+            onClick={async () => {
+              const res = await issueMobileToken();
+              setMobileToken(res.token);
+            }}
+          >
+            Issue mobile token
+          </Button>
+          {mobileToken && (
+            <pre className="bg-muted max-h-32 overflow-auto rounded-lg p-3 text-xs break-all whitespace-pre-wrap">
+              {mobileToken}
+            </pre>
+          )}
+        </section>
+
         <section className="bg-card space-y-3 rounded-xl border p-4">
           <h2 className="font-semibold">Profile / company</h2>
           <div className="grid gap-2 sm:grid-cols-2">

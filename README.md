@@ -59,12 +59,17 @@ E2E base URL: `PLAYWRIGHT_BASE_URL` (defaults to `http://127.0.0.1:3001` in conf
 ## Mobile API
 
 ```
-Authorization: Bearer <userId>
+POST /api/mobile/auth/login          # { email, password } → { token, user }
+POST /api/mobile/auth/refresh        # Bearer → new token
+Authorization: Bearer <jwt|legacyUserId>
+
 GET  /api/mobile/statistics
 GET  /api/mobile/customers
 POST /api/mobile/customers
 GET  /api/mobile/invoices
+GET  /api/mobile/invoices/:id/document
 GET  /api/mobile/products
+POST /api/mobile/products
 GET  /api/mobile/estimates
 GET  /api/mobile/expenses
 GET  /api/mobile/tickets
@@ -73,10 +78,14 @@ GET  /api/mobile/my-profile
 GET  /api/mobile/my-plan
 ```
 
-## Next phases
+## Completed phases
 
-1. PDF invoice/estimate export
-2. Recurring invoices job
-3. Real JWT for mobile
-4. Landlord (super-admin) company reports UI
-5. Stripe/PayPal/Razorpay customer payment collection on invoices
+1. PDF / print export (`/invoices/:id/print`, `/estimates/:id/print`, mobile document)
+2. Recurring invoices job (`0 2 * * *`)
+3. Mobile JWT (`auth/login`, Settings → Issue mobile token, `MOBILE_JWT_SECRET`)
+4. Landlord dashboard (`/landlord`) with charts + company/billing tables
+5. Stripe collect-on-invoice (`createInvoiceCheckoutSession` + webhook)
+6. Email send invoice/estimate (`sendInvoiceEmail` / `sendEstimateEmail`, Dummy logs in dev)
+7. Tenant reports (`/reports`)
+
+PayPal / Razorpay: register as payment methods and use manual due payment; Stripe is automated checkout.
