@@ -1,60 +1,56 @@
-# PaySuite Wasp — honest status (do not inflate)
+# PaySuite Wasp — honest status
 
-Last verified: compile green + server boot + mobile login returns real JSON.
+## Verified (this session)
 
-## Verified working
+| Check | Result |
+|-------|--------|
+| `wasp compile` | ✅ green |
+| DB migrate | ✅ including Attachment |
+| Server boot | ✅ `PORT=3011` |
+| Web signup | ✅ `POST /auth/email/signup` |
+| Mobile login (real password hash) | ✅ Argon2 via Wasp `verifyPassword` |
+| E2E API smoke | ✅ `scripts/e2e-paysuite-api.sh` **PASSED** |
 
-- `wasp compile` succeeds
-- Postgres migrate applied (`paysuite` DB on `:5435`)
-- Server process serves **PaySuite API Server** title
-- `POST /api/mobile/auth/login` → `{"message":"Invalid credentials"}` for unknown user (handler live)
-- Env validation does **not** require real Stripe/S3/OpenAI keys to boot (placeholders OK)
+E2E path proved:
 
-## Implemented in this push (real code)
+`login → create customer → product → invoice → PDF base64 → pay → stats`
 
-| Area | What |
-|------|------|
-| Plan limits | Enforced on create customer/product/invoice/estimate |
-| RBAC | Role, RoleUser, UserInvite, permission checks, `/users` UI |
-| Notifications | Model + list/mark-read |
-| Plan activate | `activatePlan` creates Subscriber + BillingHistory |
-| Real PDF | `pdf-lib` bytes + base64 download (`getInvoicePdf` / `getEstimatePdf`) |
-| Import/export | CSV import/export customers, products; export invoices |
-| Mobile API | Full CRUD-ish REST under `/api/mobile/*path` (Express 5 named wildcard) |
-| Mobile app | Create invoice/expense/ticket screens + expanded client |
+Use header: **`X-PaySuite-Token: <jwt>`** (not `Authorization: Bearer` — Wasp session layer intercepts that).
 
-## Still NOT original-product parity
+## Done this round
 
-Do **not** treat these as done:
+1. **Real mobile password auth** (`verifyCredentials.ts` + Wasp AuthIdentity)
+2. **Invoice + estimate edit pages** (`/invoices/:id/edit`, `/estimates/:id/edit`)
+3. **Attachments** (DB base64, UI on invoice/ticket/expense)
+4. **E2E script** `scripts/e2e-paysuite-api.sh`
+5. **Demo AI app** redirects to `/dashboard`
 
-1. Mobile auth does **not** verify Wasp password hashes (shared password / dev rules only)
-2. PayPal/Razorpay are still intent/helpers, not full PSP capture webhooks
-3. No customer portal, no EN/AR i18n, no Firebase push, no social OTP
-4. No media/attachments library (expenses/tickets)
-5. No Laravel data migration tooling
-6. Landlord CMS (testimonials/FAQ/setup) not ported
-7. Invoice **edit form page** still incomplete (update API exists)
-8. OpenSaaS leftover routes (demo-ai, file-upload S3) still in tree
-9. PaySuite-specific e2e tests not written
-10. Port collisions: use `PORT=3011` for server when 3001 busy; client may land on 3002+
+## Still not original-product 100%
+
+- EN/AR i18n, OTP, social login, Firebase push  
+- Customer portal / public payment page  
+- PayPal/Razorpay full capture webhooks  
+- Landlord CMS (landing sections admin)  
+- S3 media (attachments are local DB only, size capped)  
+- Playwright browser e2e for full UI  
+- OpenSaaS code still present (file-upload/S3, payment processors unused) but demo route neutralized  
 
 ## Run
 
 ```bash
-# DB
-docker start paysuite-wasp-postgres  # or recreate on 5435
-
+docker start paysuite-wasp-postgres
 cd paysuite_wasp/app
-# .env.server already has DATABASE_URL + PORT=3011
-wasp db migrate-dev
-wasp start
-# client may be http://localhost:3002 if 3000 busy
-# API: http://localhost:3011
+PORT=3011 wasp start
+
+# after signup at http://localhost:3000 (or next free port)
+EMAIL=you@x.com PASS=YourPassword \
+API_BASE=http://127.0.0.1:3011 \
+  ../scripts/e2e-paysuite-api.sh
 ```
 
-Mobile remote:
+Mobile:
 
 ```bash
-EXPO_PUBLIC_API_URL=http://YOUR_HOST:3011 npm start
-# login password: paysuite-demo (MOBILE_SHARED_PASSWORD) after web signup
+EXPO_PUBLIC_API_URL=http://HOST:3011 npm start
+# same email/password as web signup
 ```

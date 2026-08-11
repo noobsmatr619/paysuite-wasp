@@ -10,6 +10,7 @@ import {
 import { PageShell, StatusBadge } from "../shared/ui";
 import { Button } from "../../client/components/ui/button";
 import { Textarea } from "../../client/components/ui/textarea";
+import { AttachmentsPanel } from "../attachments/AttachmentsPanel";
 
 export default function TicketDetailPage() {
   const { id } = useParams();
@@ -81,7 +82,9 @@ export default function TicketDetailPage() {
         )}
       </ul>
 
-      <div className="max-w-xl space-y-2">
+      <AttachmentsPanel ownerType="ticket" ownerId={ticket.id} />
+
+      <div className="mt-6 max-w-xl space-y-2">
         <Textarea
           value={comment}
           onChange={(e) => setComment(e.target.value)}

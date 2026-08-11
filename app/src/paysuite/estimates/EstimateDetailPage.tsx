@@ -37,6 +37,9 @@ export default function EstimateDetailPage() {
       actions={
         <div className="flex flex-wrap gap-2">
           <Button asChild variant="outline">
+            <Link to={`/estimates/${est.id}/edit`}>Edit</Link>
+          </Button>
+          <Button asChild variant="outline">
             <Link to={`/estimates/${est.id}/print`}>PDF / Print</Link>
           </Button>
           <Button

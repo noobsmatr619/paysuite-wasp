@@ -75,7 +75,10 @@ export function verifyMobileToken(token: string): MobileTokenPayload {
   return payload;
 }
 
-/** Accept JWT or legacy bare userId (UUID) for backwards compatibility. */
+/**
+ * Accept signed JWT only in production.
+ * Legacy bare userId allowed only when ALLOW_LEGACY_MOBILE_TOKEN=true (dev).
+ */
 export function resolveBearerToken(authHeader: string | undefined): {
   kind: "jwt" | "legacy";
   userId: string;
@@ -89,6 +92,11 @@ export function resolveBearerToken(authHeader: string | undefined): {
     return { kind: "jwt", userId: payload.sub };
   }
 
-  // Legacy: raw user id
+  const allowLegacy =
+    process.env.ALLOW_LEGACY_MOBILE_TOKEN === "true" ||
+    process.env.NODE_ENV !== "production";
+  if (!allowLegacy) {
+    throw new Error("Legacy user-id tokens disabled; use JWT from auth/login");
+  }
   return { kind: "legacy", userId: token };
 }

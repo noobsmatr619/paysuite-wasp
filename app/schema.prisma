@@ -89,6 +89,7 @@ model Tenant {
   roles           Role[]
   notifications   Notification[]
   invites         UserInvite[]
+  attachments     Attachment[]
 }
 
 // ─── RBAC ───────────────────────────────────────────────────────────────────
@@ -579,6 +580,25 @@ model Customization {
   value     String   // JSON string
 
   @@unique([tenantId, key])
+}
+
+// Local DB attachments (no S3 required). Keep files small (<1–2MB).
+model Attachment {
+  id          String   @id @default(uuid())
+  createdAt   DateTime @default(now())
+
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  ownerType   String   // expense | ticket | invoice | estimate
+  ownerId     String
+  fileName    String
+  mimeType    String
+  sizeBytes   Int
+  // base64 payload (data only, no data: prefix)
+  contentBase64 String  @db.Text
+  uploadedById String?
+
+  @@index([tenantId, ownerType, ownerId])
 }
 
 // ─── OpenSaaS template models (kept for compatibility) ──────────────────────

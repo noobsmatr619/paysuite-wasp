@@ -2,6 +2,7 @@ import { HttpError } from "wasp/server";
 import type { MobileApi } from "wasp/server/api";
 import type { PrismaClient } from "@prisma/client";
 import { resolveBearerToken, signMobileToken } from "./jwt";
+import { verifyEmailPassword } from "./verifyCredentials";
 import { buildDocumentHtml, customerDisplay } from "../documents/pdfHtml";
 import { buildPdfBytes, toBase64 } from "../documents/realPdf";
 import {
@@ -15,12 +16,20 @@ async function resolveUser(
   req: { headers: Record<string, any> },
   entities: { User: PrismaClient["user"] },
 ) {
-  const auth = req.headers["authorization"] || req.headers["Authorization"];
-  if (!auth || typeof auth !== "string") {
-    throw new HttpError(401, "Missing Authorization header");
+  // Prefer X-PaySuite-Token — Wasp/Lucia session middleware may consume Authorization.
+  const headers = req.headers || {};
+  const raw =
+    headers["x-paysuite-token"] ||
+    headers["X-PaySuite-Token"] ||
+    headers["authorization"] ||
+    headers["Authorization"];
+  if (!raw || typeof raw !== "string") {
+    throw new HttpError(401, "Missing X-PaySuite-Token (or Authorization) header");
   }
   try {
-    const { userId } = resolveBearerToken(auth);
+    const { userId } = resolveBearerToken(
+      raw.startsWith("Bearer ") ? raw : `Bearer ${raw}`,
+    );
     const user = await entities.User.findUnique({ where: { id: userId } });
     if (!user) throw new HttpError(401, "Invalid token user");
     return user;
@@ -83,23 +92,34 @@ export const mobileApi: MobileApi = async (req, res, context) => {
     if (method === "POST" && (path === "auth/login" || path === "login")) {
       const email = String(body.email || "").trim().toLowerCase();
       const password = String(body.password || "");
-      if (!email) throw new HttpError(400, "Email is required");
-      const user = await context.entities.User.findFirst({
-        where: { email: { equals: email, mode: "insensitive" } },
-      });
-      if (!user) throw new HttpError(401, "Invalid credentials");
+      if (!email || !password) {
+        throw new HttpError(400, "Email and password are required");
+      }
 
-      const shared =
-        process.env.MOBILE_SHARED_PASSWORD ||
-        (context as any).env?.MOBILE_SHARED_PASSWORD;
-      const isProd = process.env.NODE_ENV === "production";
-      let ok = false;
-      if (password && password === user.id) ok = true;
-      else if (shared && password === shared) ok = true;
-      else if (!isProd && password.length >= 4) ok = true;
-      // Prefer shared password in all envs when set
-      if (shared) ok = password === shared || password === user.id;
-      if (!ok) throw new HttpError(401, "Invalid credentials");
+      // 1) Real Wasp email/password hash verification
+      let user = await verifyEmailPassword(email, password);
+
+      // 2) Optional shared password ONLY when MOBILE_SHARED_PASSWORD is set
+      //    (ops escape hatch; prefer real passwords)
+      if (!user) {
+        const shared = process.env.MOBILE_SHARED_PASSWORD;
+        if (shared && password === shared) {
+          user = await context.entities.User.findFirst({
+            where: { email: { equals: email, mode: "insensitive" } },
+          });
+        }
+      }
+
+      // 3) Dev-only: accept Settings-issued raw token as password IF it is the user id
+      //    (legacy; disabled when NODE_ENV=production)
+      if (!user && process.env.NODE_ENV !== "production") {
+        const byId = await context.entities.User.findFirst({
+          where: { email: { equals: email, mode: "insensitive" } },
+        });
+        if (byId && password === byId.id) user = byId;
+      }
+
+      if (!user) throw new HttpError(401, "Invalid credentials");
 
       const token = signMobileToken(user.id, user.email);
       return res.json({

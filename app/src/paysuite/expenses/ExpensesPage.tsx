@@ -11,6 +11,7 @@ import { PageShell, DataTable, SearchField, money } from "../shared/ui";
 import { Button } from "../../client/components/ui/button";
 import { Input } from "../../client/components/ui/input";
 import { Label } from "../../client/components/ui/label";
+import { AttachmentsPanel } from "../attachments/AttachmentsPanel";
 
 export default function ExpensesPage() {
   const [search, setSearch] = useState("");
@@ -21,6 +22,7 @@ export default function ExpensesPage() {
     type: "expense",
   });
   const [showForm, setShowForm] = useState(false);
+  const [attachFor, setAttachFor] = useState<string | null>(null);
   const [form, setForm] = useState({
     title: "",
     date: new Date().toISOString().slice(0, 10),
@@ -145,7 +147,16 @@ export default function ExpensesPage() {
               </td>
               <td className="px-4 py-3">{e.category?.name || "—"}</td>
               <td className="px-4 py-3">{money(e.amount)}</td>
-              <td className="px-4 py-3 text-right">
+              <td className="space-x-1 px-4 py-3 text-right">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() =>
+                    setAttachFor((cur) => (cur === e.id ? null : e.id))
+                  }
+                >
+                  Files
+                </Button>
                 <Button
                   size="sm"
                   variant="ghost"
@@ -161,6 +172,9 @@ export default function ExpensesPage() {
             </tr>
           ))}
         </DataTable>
+      )}
+      {attachFor && (
+        <AttachmentsPanel ownerType="expense" ownerId={attachFor} />
       )}
     </PageShell>
   );

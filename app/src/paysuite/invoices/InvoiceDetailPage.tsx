@@ -21,6 +21,7 @@ import {
 import { Button } from "../../client/components/ui/button";
 import { Input } from "../../client/components/ui/input";
 import { Label } from "../../client/components/ui/label";
+import { AttachmentsPanel } from "../attachments/AttachmentsPanel";
 
 export default function InvoiceDetailPage() {
   const { id } = useParams();
@@ -109,6 +110,9 @@ export default function InvoiceDetailPage() {
       subtitle={`Customer: ${customerName(inv.customer)}`}
       actions={
         <div className="flex flex-wrap gap-2">
+          <Button asChild variant="outline">
+            <Link to={`/invoices/${inv.id}/edit`}>Edit</Link>
+          </Button>
           <Button asChild variant="outline">
             <Link to={`/invoices/${inv.id}/print`}>Print HTML</Link>
           </Button>
@@ -274,6 +278,8 @@ export default function InvoiceDetailPage() {
       {error && inv.dueAmount <= 0 && (
         <p className="mt-4 text-sm text-rose-600">{error}</p>
       )}
+
+      <AttachmentsPanel ownerType="invoice" ownerId={inv.id} />
 
       {!!inv.transactions?.length && (
         <>

@@ -29,6 +29,7 @@ import { cn } from "../client/utils";
 import { uploadFileWithProgress, validateFile } from "./fileUploading";
 import { ALLOWED_FILE_TYPES } from "./validation";
 
+/** Prefer PaySuite AttachmentsPanel on invoices/tickets/expenses. */
 export default function FileUploadPage() {
   const [fileKeyForS3, setFileKeyForS3] = useState<File["s3Key"]>("");
   const [uploadProgressPercent, setUploadProgressPercent] = useState<number>(0);

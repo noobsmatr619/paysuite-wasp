@@ -278,6 +278,12 @@ page InvoiceDetailPage {
   component: import InvoiceDetailPage from "@src/paysuite/invoices/InvoiceDetailPage"
 }
 
+route InvoiceEditRoute { path: "/invoices/:id/edit", to: InvoiceEditPage }
+page InvoiceEditPage {
+  authRequired: true,
+  component: import InvoiceEditPage from "@src/paysuite/invoices/InvoiceEditPage"
+}
+
 query getInvoices {
   fn: import { getInvoices } from "@src/paysuite/invoices/operations",
   entities: [User, Tenant, Plan, Subscriber, Invoice, Customer]
@@ -367,6 +373,12 @@ route EstimateDetailRoute { path: "/estimates/:id", to: EstimateDetailPage }
 page EstimateDetailPage {
   authRequired: true,
   component: import EstimateDetailPage from "@src/paysuite/estimates/EstimateDetailPage"
+}
+
+route EstimateEditRoute { path: "/estimates/:id/edit", to: EstimateEditPage }
+page EstimateEditPage {
+  authRequired: true,
+  component: import EstimateEditPage from "@src/paysuite/estimates/EstimateEditPage"
 }
 
 query getEstimates {
@@ -797,6 +809,29 @@ query getInvoicePdf {
 query getEstimatePdf {
   fn: import { getEstimatePdf } from "@src/paysuite/documents/operations",
   entities: [User, Tenant, Plan, Subscriber, Estimate, Customer, EstimateDetail, EstimateTax, Product, Tax]
+}
+//#endregion
+
+
+//#region Attachments
+query listAttachments {
+  fn: import { listAttachments } from "@src/paysuite/attachments/operations",
+  entities: [User, Tenant, Plan, Subscriber, Attachment]
+}
+
+query getAttachment {
+  fn: import { getAttachment } from "@src/paysuite/attachments/operations",
+  entities: [User, Tenant, Plan, Subscriber, Attachment]
+}
+
+action createAttachment {
+  fn: import { createAttachment } from "@src/paysuite/attachments/operations",
+  entities: [User, Tenant, Plan, Subscriber, Attachment]
+}
+
+action deleteAttachment {
+  fn: import { deleteAttachment } from "@src/paysuite/attachments/operations",
+  entities: [User, Tenant, Plan, Subscriber, Attachment]
 }
 //#endregion
 
