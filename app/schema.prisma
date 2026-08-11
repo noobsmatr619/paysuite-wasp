@@ -372,6 +372,7 @@ model Estimate {
   grandTotal        Float
   note              String?
   estimateTemplate  Int      @default(1)
+  portalToken       String?  @unique
 
   details           EstimateDetail[]
   taxes             EstimateTax[]
@@ -671,4 +672,34 @@ model ContactFormMessage {
   content   String
   isRead    Boolean   @default(false)
   repliedAt DateTime?
+}
+
+// ─── Landlord / marketing CMS ───────────────────────────────────────────────
+model CmsFaq {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  question  String
+  answer    String
+  sortOrder Int      @default(0)
+  isPublished Boolean @default(true)
+}
+
+model CmsTestimonial {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  name      String
+  role      String?
+  quote     String
+  avatarUrl String?
+  sortOrder Int      @default(0)
+  isPublished Boolean @default(true)
+}
+
+model CmsSiteContent {
+  id        String   @id @default(uuid())
+  updatedAt DateTime @updatedAt
+  key       String   @unique // hero_title, hero_subtitle, contact_email, terms, privacy
+  value     String
 }

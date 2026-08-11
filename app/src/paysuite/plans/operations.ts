@@ -88,7 +88,9 @@ export const getPlans: GetPlans<void, Plan[]> = async (_args, context) => {
 
 export const getMyPlan: GetMyPlan<void, any> = async (_args, context) => {
   if (!context.user) throw new HttpError(401);
-  const tenantId = await requireTenantId(context.user, context.entities);
+  const tenantId = await requireTenantId(context.user, context.entities, {
+    allowExpired: true,
+  });
 
   const subscriber = await context.entities.Subscriber.findFirst({
     where: { tenantId },

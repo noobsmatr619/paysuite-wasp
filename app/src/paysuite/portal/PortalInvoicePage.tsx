@@ -1,8 +1,15 @@
 import { useMemo } from "react";
 import { useParams, useSearchParams } from "react-router";
-import { useQuery, getPortalInvoice, createPortalCheckout } from "wasp/client/operations";
+import {
+  useQuery,
+  getPortalInvoice,
+  createPortalCheckout,
+  recordPortalExternalPayment,
+} from "wasp/client/operations";
 import { money, StatusBadge } from "../shared/ui";
 import { Button } from "../../client/components/ui/button";
+import { Input } from "../../client/components/ui/input";
+import { Label } from "../../client/components/ui/label";
 import { useState } from "react";
 
 export default function PortalInvoicePage() {
@@ -14,6 +21,10 @@ export default function PortalInvoicePage() {
     { enabled: Boolean(token) } as any,
   );
   const [busy, setBusy] = useState(false);
+  const [extId, setExtId] = useState("");
+  const [extGateway, setExtGateway] = useState<"paypal" | "razorpay" | "bank">(
+    "paypal",
+  );
   const [msg, setMsg] = useState<string | null>(
     search.get("paid") === "1"
       ? "Payment submitted. Status updates when the processor confirms."
@@ -123,7 +134,7 @@ export default function PortalInvoicePage() {
       </div>
 
       {data.dueAmount > 0 && (
-        <div className="mt-6">
+        <div className="mt-6 space-y-4">
           <Button
             disabled={busy}
             onClick={async () => {
@@ -137,7 +148,7 @@ export default function PortalInvoicePage() {
                 }
                 setMsg(
                   res.message ||
-                    "Card checkout is not available. Please contact the company to arrange payment.",
+                    "Card checkout is not available. Use PayPal/Razorpay/bank reference below or contact the company.",
                 );
                 refetch();
               } catch (e: any) {
@@ -147,8 +158,67 @@ export default function PortalInvoicePage() {
               }
             }}
           >
-            {busy ? "Starting checkout…" : "Pay online"}
+            {busy ? "Starting checkout…" : "Pay with card (Stripe)"}
           </Button>
+
+          <div className="bg-card space-y-2 rounded-xl border p-4">
+            <h3 className="text-sm font-semibold">
+              Already paid via PayPal / Razorpay / bank?
+            </h3>
+            <p className="text-muted-foreground text-xs">
+              Enter the processor transaction / reference ID. Amount defaults to
+              full due ({money(data.dueAmount)}).
+            </p>
+            <div className="space-y-1">
+              <Label>Gateway</Label>
+              <select
+                className="border-input bg-background h-10 w-full rounded-md border px-3 text-sm"
+                value={extGateway}
+                onChange={(e) => setExtGateway(e.target.value as any)}
+              >
+                <option value="paypal">PayPal</option>
+                <option value="razorpay">Razorpay</option>
+                <option value="bank">Bank transfer</option>
+              </select>
+            </div>
+            <div className="space-y-1">
+              <Label>Transaction / reference ID</Label>
+              <Input
+                value={extId}
+                onChange={(e) => setExtId(e.target.value)}
+                placeholder="e.g. PAYID-XXX or rzp_xxx"
+              />
+            </div>
+            <Button
+              variant="outline"
+              disabled={busy || !extId.trim()}
+              onClick={async () => {
+                setBusy(true);
+                setMsg(null);
+                try {
+                  const res = await recordPortalExternalPayment({
+                    token: token!,
+                    amount: data.dueAmount,
+                    gateway: extGateway,
+                    externalId: extId.trim(),
+                  });
+                  setMsg(
+                    res.duplicate
+                      ? "This payment was already recorded."
+                      : `Payment recorded. Status: ${res.status}`,
+                  );
+                  setExtId("");
+                  refetch();
+                } catch (e: any) {
+                  setMsg(e?.message || "Could not record payment");
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              Submit payment reference
+            </Button>
+          </div>
         </div>
       )}
 

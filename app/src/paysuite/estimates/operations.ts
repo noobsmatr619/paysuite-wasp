@@ -9,6 +9,7 @@ import type {
   ConvertEstimateToInvoice,
 } from "wasp/server/operations";
 import type { Estimate } from "wasp/entities";
+import crypto from "crypto";
 import {
   requireTenantId,
   computeLineTotals,
@@ -105,6 +106,7 @@ export const createEstimate: CreateEstimate<EstimateInput, any> = async (
       grandTotal: totals.grandTotal,
       note: args.note ?? null,
       estimateTemplate: args.estimateTemplate ?? 1,
+      portalToken: crypto.randomBytes(24).toString("hex"),
       details: {
         create: args.lines.map((l) => ({
           productId: l.productId,
@@ -123,6 +125,27 @@ export const createEstimate: CreateEstimate<EstimateInput, any> = async (
     include: estimateInclude,
   });
 };
+
+export async function ensureEstimatePortalLink(
+  args: { id: string },
+  context: any,
+): Promise<{ token: string; path: string }> {
+  if (!context.user) throw new HttpError(401);
+  const tenantId = await requireTenantId(context.user, context.entities);
+  const est = await context.entities.Estimate.findFirst({
+    where: { id: args.id, tenantId },
+  });
+  if (!est) throw new HttpError(404, "Estimate not found");
+  let token = est.portalToken as string | null;
+  if (!token) {
+    token = crypto.randomBytes(24).toString("hex");
+    await context.entities.Estimate.update({
+      where: { id: est.id },
+      data: { portalToken: token },
+    });
+  }
+  return { token, path: `/portal/estimate/${token}` };
+}
 
 export const updateEstimate: UpdateEstimate<
   EstimateInput & { id: string },

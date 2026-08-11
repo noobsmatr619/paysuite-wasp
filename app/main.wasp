@@ -78,6 +78,21 @@ action createPortalCheckout {
   fn: import { createPortalCheckout } from "@src/paysuite/portal/operations",
   entities: [Invoice, Customer, Tenant]
 }
+
+action recordPortalExternalPayment {
+  fn: import { recordPortalExternalPayment } from "@src/paysuite/portal/operations",
+  entities: [Invoice, Transaction, PaymentMethod]
+}
+
+route PortalEstimateRoute { path: "/portal/estimate/:token", to: PortalEstimatePage }
+page PortalEstimatePage {
+  component: import PortalEstimatePage from "@src/paysuite/portal/PortalEstimatePage"
+}
+
+query getPortalEstimate {
+  fn: import { getPortalEstimate } from "@src/paysuite/portal/estimatePortal",
+  entities: [Estimate, Customer, Tenant, EstimateDetail, Product, EstimateTax, Tax]
+}
 //#endregion
 
 //#region Marketing
@@ -452,6 +467,11 @@ query getEstimateDocument {
 action sendEstimateEmail {
   fn: import { sendEstimateEmail } from "@src/paysuite/documents/operations",
   entities: [User, Tenant, Plan, Subscriber, Estimate, Customer, EstimateDetail, EstimateTax, Product, Tax]
+}
+
+action ensureEstimatePortalLink {
+  fn: import { ensureEstimatePortalLink } from "@src/paysuite/estimates/operations",
+  entities: [User, Tenant, Plan, Subscriber, Estimate]
 }
 //#endregion
 
@@ -944,6 +964,55 @@ job dailyStatsJob {
   },
   entities: [User, DailyStats, Logs, PageViewSource]
 }
+
+
+//#region CMS landlord
+route CmsAdminRoute { path: "/cms", to: CmsAdminPage }
+page CmsAdminPage {
+  authRequired: true,
+  component: import CmsAdminPage from "@src/paysuite/cms/CmsAdminPage"
+}
+
+query getPublicCms {
+  fn: import { getPublicCms } from "@src/paysuite/cms/operations",
+  entities: [CmsFaq, CmsTestimonial, CmsSiteContent]
+}
+
+query getCmsAdmin {
+  fn: import { getCmsAdmin } from "@src/paysuite/cms/operations",
+  entities: [CmsFaq, CmsTestimonial, CmsSiteContent]
+}
+
+action upsertCmsContent {
+  fn: import { upsertCmsContent } from "@src/paysuite/cms/operations",
+  entities: [CmsSiteContent]
+}
+
+action createCmsFaq {
+  fn: import { createCmsFaq } from "@src/paysuite/cms/operations",
+  entities: [CmsFaq]
+}
+
+action deleteCmsFaq {
+  fn: import { deleteCmsFaq } from "@src/paysuite/cms/operations",
+  entities: [CmsFaq]
+}
+
+action createCmsTestimonial {
+  fn: import { createCmsTestimonial } from "@src/paysuite/cms/operations",
+  entities: [CmsTestimonial]
+}
+
+action deleteCmsTestimonial {
+  fn: import { deleteCmsTestimonial } from "@src/paysuite/cms/operations",
+  entities: [CmsTestimonial]
+}
+
+action seedCmsDefaults {
+  fn: import { seedCmsDefaults } from "@src/paysuite/cms/operations",
+  entities: [CmsFaq, CmsTestimonial, CmsSiteContent]
+}
+//#endregion
 
 route AdminRoute { path: "/admin", to: AnalyticsDashboardPage }
 page AnalyticsDashboardPage {

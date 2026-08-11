@@ -1,54 +1,52 @@
-# PaySuite Wasp — honest status
+# PaySuite Wasp — status (honest)
 
-## Verified this session
+## Verified
 
 | Check | Result |
 |-------|--------|
 | `wasp compile` | ✅ |
-| Customer portal (public query) | ✅ `get-portal-invoice` returns invoice without login |
-| Portal token on invoice create | ✅ |
-| API e2e + portal step | ✅ **PASSED** |
-| Real password mobile login | ✅ |
+| API e2e (login→invoice→pdf→pay→portal) | ✅ **PASSED** |
+| Portal external PayPal/Razorpay reference pay | ✅ via `recordPortalExternalPayment` |
+| Real Argon2 mobile login | ✅ |
+| PDF (`pdf-lib`) | ✅ |
 
-E2E:
+## Feature coverage (product MVP)
 
-`login → customer → product → invoice → PDF → pay → stats → public portal`
+| Area | Status |
+|------|--------|
+| Multi-tenant CRUD | Yes |
+| Plan limits + activate plan | Yes |
+| RBAC / invites / notifications | Yes |
+| Real PDF + email send | Yes (Dummy email logs) |
+| CSV import/export | Yes |
+| Customer invoice portal | Yes (`/portal/invoice/:token`) |
+| Estimate portal | Yes (`/portal/estimate/:token`) |
+| Portal Stripe card | Needs real STRIPE keys |
+| Portal external PSP ref (PayPal/Razorpay/bank) | Yes |
+| Landlord CMS (FAQ/testimonials/content) | Yes (`/cms`, admin) |
+| Subscription expired gate | Yes (402 + dashboard CTA) |
+| Attachments | Yes (DB base64) |
+| Mobile API CRUD + JWT | Yes |
+| Mobile EN/AR shell | Yes |
+| Playwright UI spec | Written (run with client up) |
 
-## Delivered next-slice features
+## Still not full original commercial app
 
-1. **Customer portal**
-   - `Invoice.portalToken`
-   - Public page `/portal/invoice/:token`
-   - `getPortalInvoice` / `createPortalCheckout`
-   - Staff: **Copy portal link** on invoice detail
+These remain **out of scope for a drop-in replacement** unless you invest more:
 
-2. **OpenSaaS noise reduced**
-   - Demo AI → dashboard redirect
-   - File upload page → settings
-   - Admin calendar/UI demo pages → `/admin`
-   - Portal routes hide main app chrome
+- Firebase push, OTP, social login, full Arabic RTL polish  
+- Live Stripe/PayPal/Razorpay **merchant accounts + signed webhooks** end-to-end in production  
+- DomPDF multi-template parity / print house fidelity  
+- Full media library (S3)  
+- Landlord multi-company delete workflows from original PHP  
+- Automated browser e2e always green without Dummy-email quirks  
 
-3. **Playwright**
-   - `e2e-tests/tests/paysuiteAppTests.spec.ts` (signup → dashboard → customers)
-   - Landing title accepts PaySuite
-   - `PLAYWRIGHT_BASE_URL` defaults to client `:3000` (not server)
-
-## Still open (not claiming done)
-
-- Playwright needs a running client + email verification flow may flake with Dummy provider
-- Portal “Pay online” needs real Stripe keys (placeholder returns message)
-- i18n/push/social, landlord CMS, S3 media, full PayPal/Razorpay webhooks
+**Practical claim:** shippable multi-tenant billing **MVP** on Wasp + Expo client, with verified money path API e2e — **not** 1:1 of every Laravel/Flutter feature.
 
 ## Run
 
 ```bash
 docker start paysuite-wasp-postgres
 cd paysuite_wasp/app && PORT=3011 wasp start
-
-EMAIL=you@x.com PASS=secret API_BASE=http://127.0.0.1:3011 \
-  ../scripts/e2e-paysuite-api.sh
-
-# UI e2e (client must be up)
-cd e2e-tests
-PLAYWRIGHT_BASE_URL=http://127.0.0.1:3000 npx playwright test tests/paysuiteAppTests.spec.ts
+EMAIL=… PASS=… API_BASE=http://127.0.0.1:3011 ../scripts/e2e-paysuite-api.sh
 ```

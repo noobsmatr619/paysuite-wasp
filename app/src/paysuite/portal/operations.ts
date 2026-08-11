@@ -2,8 +2,9 @@ import { HttpError, config } from "wasp/server";
 import type {
   GetPortalInvoice,
   CreatePortalCheckout,
+  RecordPortalExternalPayment,
 } from "wasp/server/operations";
-import { dueAmount } from "../shared/tenant";
+import { dueAmount, formatDocNumber } from "../shared/tenant";
 import { stripeClient } from "../../payment/stripe/stripeClient";
 
 /**
@@ -130,4 +131,97 @@ export const createPortalCheckout: CreatePortalCheckout<
         "Online card pay is not configured. Contact the company to pay this invoice.",
     };
   }
+};
+
+/**
+ * Customer/staff records an external PSP payment (PayPal/Razorpay/bank ref).
+ * Idempotent on transactionId token field.
+ */
+export const recordPortalExternalPayment: RecordPortalExternalPayment<
+  {
+    token: string;
+    amount: number;
+    gateway: "paypal" | "razorpay" | "bank" | "other";
+    externalId: string;
+    note?: string | null;
+  },
+  any
+> = async (args, context) => {
+  const invoice = await context.entities.Invoice.findFirst({
+    where: { portalToken: args.token },
+  });
+  if (!invoice) throw new HttpError(404, "Invoice not found");
+
+  const externalId = (args.externalId || "").trim();
+  if (!externalId) throw new HttpError(400, "externalId required");
+  if (!(args.amount > 0)) throw new HttpError(400, "Invalid amount");
+
+  const existing = await context.entities.Transaction.findFirst({
+    where: { token: `${args.gateway}:${externalId}` },
+  });
+  if (existing) {
+    return { ok: true, duplicate: true, transactionId: existing.id };
+  }
+
+  const due = dueAmount(invoice);
+  const amount = Math.min(args.amount, due || args.amount);
+
+  let method = await context.entities.PaymentMethod.findFirst({
+    where: {
+      OR: [
+        { tenantId: invoice.tenantId, type: args.gateway },
+        { tenantId: null, type: args.gateway },
+      ],
+    },
+  });
+  if (!method) {
+    method = await context.entities.PaymentMethod.create({
+      data: {
+        tenantId: invoice.tenantId,
+        name: args.gateway.toUpperCase(),
+        type: args.gateway,
+      },
+    });
+  }
+
+  const lastTx = await context.entities.Transaction.findFirst({
+    where: { tenantId: invoice.tenantId },
+    orderBy: { invoiceNumber: "desc" },
+  });
+  const txNum = (lastTx?.invoiceNumber || 0) + 1;
+
+  await context.entities.Transaction.create({
+    data: {
+      tenantId: invoice.tenantId,
+      invoiceId: invoice.id,
+      customerId: invoice.customerId,
+      paymentMethodId: method.id,
+      invoiceNumber: txNum,
+      invoiceFullNumber: formatDocNumber("PAY", txNum),
+      receivedOn: new Date(),
+      amount,
+      note: args.note || `${args.gateway} ${externalId}`,
+      token: `${args.gateway}:${externalId}`,
+    },
+  });
+
+  const receivedAmount = invoice.receivedAmount + amount;
+  const status =
+    receivedAmount >= invoice.grandTotal - 0.001
+      ? "paid"
+      : receivedAmount > 0
+        ? "partially_paid"
+        : "due";
+
+  const updated = await context.entities.Invoice.update({
+    where: { id: invoice.id },
+    data: { receivedAmount, status },
+  });
+
+  return {
+    ok: true,
+    duplicate: false,
+    status: updated.status,
+    dueAmount: dueAmount(updated),
+  };
 };

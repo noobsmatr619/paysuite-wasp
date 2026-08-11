@@ -515,6 +515,7 @@ export const mobileApi: MobileApi = async (req, res, context) => {
             grandTotal: totals.grandTotal,
             note: body.note || null,
             estimateTemplate: 1,
+            portalToken: crypto.randomBytes(24).toString("hex"),
             details: {
               create: lines.map((l: any) => ({
                 productId: l.productId,

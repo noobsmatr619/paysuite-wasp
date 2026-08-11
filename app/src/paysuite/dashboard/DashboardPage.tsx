@@ -3,14 +3,40 @@ import {
   getDashboardStats,
   getPaymentOverview,
   getIncomeExpenseOverview,
+  getMyPlan,
 } from "wasp/client/operations";
 import { Link } from "react-router";
 import { PageShell, StatCard, money } from "../shared/ui";
 
 export default function DashboardPage() {
-  const { data: stats, isLoading } = useQuery(getDashboardStats);
+  const { data: stats, isLoading, error } = useQuery(getDashboardStats);
   const { data: payments } = useQuery(getPaymentOverview, {});
   const { data: incomeExpense } = useQuery(getIncomeExpenseOverview, {});
+  const { data: myPlan } = useQuery(getMyPlan);
+
+  if (error) {
+    const msg = String((error as any)?.message || error);
+    if (msg.includes("expired") || msg.includes("402")) {
+      return (
+        <PageShell title="Subscription expired">
+          <p className="mb-4 text-sm text-rose-600">
+            Your company subscription has expired. Activate a plan to continue.
+          </p>
+          <Link
+            className="bg-primary text-primary-foreground rounded-lg px-4 py-2 text-sm font-medium"
+            to="/plans"
+          >
+            Choose a plan
+          </Link>
+        </PageShell>
+      );
+    }
+    return (
+      <PageShell title="Dashboard">
+        <p className="text-sm text-rose-600">{msg}</p>
+      </PageShell>
+    );
+  }
 
   if (isLoading || !stats) {
     return (
@@ -19,6 +45,9 @@ export default function DashboardPage() {
       </PageShell>
     );
   }
+
+  const usage = myPlan?.usage;
+  const limits = myPlan?.limits;
 
   return (
     <PageShell
@@ -46,9 +75,30 @@ export default function DashboardPage() {
       </div>
 
       <div className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label="Customers" value={stats.customerCount} />
-        <StatCard label="Invoices" value={stats.invoiceCount} />
-        <StatCard label="Products" value={stats.productCount} />
+        <StatCard
+          label="Customers"
+          value={
+            limits
+              ? `${stats.customerCount}/${limits.customers}`
+              : stats.customerCount
+          }
+        />
+        <StatCard
+          label="Invoices"
+          value={
+            limits
+              ? `${stats.invoiceCount}/${limits.invoices}`
+              : stats.invoiceCount
+          }
+        />
+        <StatCard
+          label="Products"
+          value={
+            limits
+              ? `${stats.productCount}/${limits.products}`
+              : stats.productCount
+          }
+        />
         <StatCard label="Open tickets" value={stats.ticketCount} />
       </div>
 

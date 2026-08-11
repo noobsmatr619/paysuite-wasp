@@ -5,6 +5,7 @@ import {
   convertEstimateToInvoice,
   sendEstimateEmail,
   getEstimate,
+  ensureEstimatePortalLink,
 } from "wasp/client/operations";
 import {
   PageShell,
@@ -38,6 +39,25 @@ export default function EstimateDetailPage() {
         <div className="flex flex-wrap gap-2">
           <Button asChild variant="outline">
             <Link to={`/estimates/${est.id}/edit`}>Edit</Link>
+          </Button>
+          <Button
+            variant="outline"
+            disabled={busy}
+            onClick={async () => {
+              setBusy(true);
+              try {
+                const link = await ensureEstimatePortalLink({ id: est.id });
+                const url = `${window.location.origin}${link.path}`;
+                await navigator.clipboard.writeText(url);
+                setMessage(`Portal link copied: ${url}`);
+              } catch (e: any) {
+                setError(e?.message || "Portal link failed");
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            Copy portal link
           </Button>
           <Button asChild variant="outline">
             <Link to={`/estimates/${est.id}/print`}>PDF / Print</Link>

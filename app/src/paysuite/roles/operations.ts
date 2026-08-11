@@ -202,7 +202,9 @@ export const activatePlan: ActivatePlan<{ planId: string }, any> = async (
   context,
 ) => {
   if (!context.user) throw new HttpError(401);
-  const tenantId = await requireTenantId(context.user, context.entities);
+  const tenantId = await requireTenantId(context.user, context.entities, {
+    allowExpired: true,
+  });
   const plan = await context.entities.Plan.findFirst({
     where: { id: args.planId, status: "active" },
   });
@@ -237,6 +239,11 @@ export const activatePlan: ActivatePlan<{ planId: string }, any> = async (
       status: plan.isFree || plan.price === 0 ? "paid" : "due",
       amount: plan.price,
     },
+  });
+
+  await context.entities.Tenant.update({
+    where: { id: tenantId },
+    data: { status: "active" },
   });
 
   await context.entities.User.update({

@@ -16,12 +16,44 @@ export async function requireTenantId(
     Plan: PrismaClient["plan"];
     Subscriber: PrismaClient["subscriber"];
   },
+  opts?: { allowExpired?: boolean },
 ): Promise<string> {
   if (!user) {
     throw new HttpError(401, "Not authenticated");
   }
 
   if (user.tenantId) {
+    // Block expired / suspended tenants (except admins / allowExpired ops like /plans)
+    if (!user.isAdmin && !opts?.allowExpired) {
+      const tenant = await entities.Tenant.findUnique({
+        where: { id: user.tenantId },
+      });
+      if (tenant?.status === "suspended") {
+        throw new HttpError(403, "Company account is suspended");
+      }
+      if (tenant?.status === "expired") {
+        throw new HttpError(
+          402,
+          "Subscription expired. Activate a plan at /plans",
+        );
+      }
+      // Soft-expire if latest paid sub endDate passed
+      const sub = await entities.Subscriber.findFirst({
+        where: { tenantId: user.tenantId },
+        orderBy: { createdAt: "desc" },
+        include: { plan: true },
+      });
+      if (sub?.endDate && sub.endDate < new Date() && !sub.plan?.isFree) {
+        await entities.Tenant.update({
+          where: { id: user.tenantId },
+          data: { status: "expired" },
+        });
+        throw new HttpError(
+          402,
+          "Subscription expired. Activate a plan at /plans",
+        );
+      }
+    }
     return user.tenantId;
   }
 

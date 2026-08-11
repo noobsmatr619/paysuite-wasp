@@ -26,7 +26,9 @@ export default function App() {
     ? marketingNavigationItems
     : demoNavigationitems;
 
-  const isPortal = location.pathname.startsWith("/portal");
+  const isPortal =
+    location.pathname.startsWith("/portal") ||
+    location.pathname.startsWith("/plans-expired");
 
   const shouldDisplayAppNavBar = useMemo(() => {
     return (
