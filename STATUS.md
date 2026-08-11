@@ -1,47 +1,24 @@
 # PaySuite Wasp — status (honest)
 
-## Verified
+## Verified (2026-08-11)
 
 | Check | Result |
 |-------|--------|
 | `wasp compile` | ✅ |
-| API e2e (login→invoice→pdf→pay→portal) | ✅ **PASSED** |
-| Portal external PayPal/Razorpay reference pay | ✅ via `recordPortalExternalPayment` |
-| Real Argon2 mobile login | ✅ |
-| PDF (`pdf-lib`) | ✅ |
+| API e2e login→invoice→pdf→pay→portal | ✅ PASSED |
+| Mobile register + JWT | ✅ |
+| Mobile forgot/OTP/reset password | ✅ (dev OTP) |
+| Mobile clone invoice | ✅ |
+| Mobile notes/taxes/PM/permissions | ✅ |
+| Mobile plan auto-seed + activate | ✅ |
+| Mobile customizations + account-delete | ✅ |
+| PDF (pdf-lib) | ✅ |
+| CMS choose-us / work-solution | ✅ |
+| Landlord companies | ✅ `/landlord/companies` |
 
-## Feature coverage (product MVP)
+## Still not bit-for-bit original commercial app
 
-| Area | Status |
-|------|--------|
-| Multi-tenant CRUD | Yes |
-| Plan limits + activate plan | Yes |
-| RBAC / invites / notifications | Yes |
-| Real PDF + email send | Yes (Dummy email logs) |
-| CSV import/export | Yes |
-| Customer invoice portal | Yes (`/portal/invoice/:token`) |
-| Estimate portal | Yes (`/portal/estimate/:token`) |
-| Portal Stripe card | Needs real STRIPE keys |
-| Portal external PSP ref (PayPal/Razorpay/bank) | Yes |
-| Landlord CMS (FAQ/testimonials/content) | Yes (`/cms`, admin) |
-| Subscription expired gate | Yes (402 + dashboard CTA) |
-| Attachments | Yes (DB base64) |
-| Mobile API CRUD + JWT | Yes |
-| Mobile EN/AR shell | Yes |
-| Playwright UI spec | Written (run with client up) |
-
-## Still not full original commercial app
-
-These remain **out of scope for a drop-in replacement** unless you invest more:
-
-- Firebase push, OTP, social login, full Arabic RTL polish  
-- Live Stripe/PayPal/Razorpay **merchant accounts + signed webhooks** end-to-end in production  
-- DomPDF multi-template parity / print house fidelity  
-- Full media library (S3)  
-- Landlord multi-company delete workflows from original PHP  
-- Automated browser e2e always green without Dummy-email quirks  
-
-**Practical claim:** shippable multi-tenant billing **MVP** on Wasp + Expo client, with verified money path API e2e — **not** 1:1 of every Laravel/Flutter feature.
+Firebase push, real SMS OTP, full social OAuth, live PSP webhooks, DomPDF multi-template fidelity, S3 media, every Flutter filter pixel clone.
 
 ## Run
 

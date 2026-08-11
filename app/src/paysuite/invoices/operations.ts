@@ -262,6 +262,12 @@ export const updateInvoice: UpdateInvoice<
     data: {
       note: args.note ?? existing.note,
       referenceNumber: args.referenceNumber ?? existing.referenceNumber,
+      recurring:
+        (args as any).recurring !== undefined
+          ? !!(args as any).recurring
+          : existing.recurring,
+      invoiceTemplate:
+        (args as any).invoiceTemplate ?? existing.invoiceTemplate,
     },
     include: invoiceInclude,
   });

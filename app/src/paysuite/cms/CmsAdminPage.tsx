@@ -26,6 +26,10 @@ export default function CmsAdminPage() {
   const [tName, setTName] = useState("");
   const [tQuote, setTQuote] = useState("");
   const [hero, setHero] = useState("");
+  const [chooseUsTitle, setChooseUsTitle] = useState("");
+  const [chooseUsJson, setChooseUsJson] = useState("");
+  const [workTitle, setWorkTitle] = useState("");
+  const [workJson, setWorkJson] = useState("");
   const [msg, setMsg] = useState<string | null>(null);
 
   if (error) {
@@ -87,6 +91,115 @@ export default function CmsAdminPage() {
           }}
         >
           Save hero
+        </Button>
+      </section>
+
+      <section className="bg-card mb-8 space-y-2 rounded-xl border p-4">
+        <h2 className="font-semibold">Why choose us</h2>
+        <Input
+          placeholder="Section title"
+          defaultValue={
+            data.contents?.find((c: any) => c.key === "choose_us_title")
+              ?.value || ""
+          }
+          value={
+            chooseUsTitle ||
+            data.contents?.find((c: any) => c.key === "choose_us_title")
+              ?.value ||
+            ""
+          }
+          onChange={(e) => setChooseUsTitle(e.target.value)}
+        />
+        <Textarea
+          placeholder='JSON array: [{"title":"...","body":"..."}]'
+          rows={5}
+          defaultValue={
+            data.contents?.find((c: any) => c.key === "choose_us_body")
+              ?.value || ""
+          }
+          value={
+            chooseUsJson ||
+            data.contents?.find((c: any) => c.key === "choose_us_body")
+              ?.value ||
+            ""
+          }
+          onChange={(e) => setChooseUsJson(e.target.value)}
+        />
+        <Button
+          size="sm"
+          onClick={async () => {
+            await upsertCmsContent({
+              key: "choose_us_title",
+              value:
+                chooseUsTitle ||
+                data.contents?.find((c: any) => c.key === "choose_us_title")
+                  ?.value ||
+                "Why choose us",
+            });
+            await upsertCmsContent({
+              key: "choose_us_body",
+              value:
+                chooseUsJson ||
+                data.contents?.find((c: any) => c.key === "choose_us_body")
+                  ?.value ||
+                "[]",
+            });
+            setMsg("Choose-us saved");
+            refetch();
+          }}
+        >
+          Save choose-us
+        </Button>
+      </section>
+
+      <section className="bg-card mb-8 space-y-2 rounded-xl border p-4">
+        <h2 className="font-semibold">How it works</h2>
+        <Input
+          placeholder="Section title"
+          value={
+            workTitle ||
+            data.contents?.find((c: any) => c.key === "work_solution_title")
+              ?.value ||
+            ""
+          }
+          onChange={(e) => setWorkTitle(e.target.value)}
+        />
+        <Textarea
+          placeholder='JSON array: [{"step":1,"title":"...","body":"..."}]'
+          rows={5}
+          value={
+            workJson ||
+            data.contents?.find((c: any) => c.key === "work_solution_body")
+              ?.value ||
+            ""
+          }
+          onChange={(e) => setWorkJson(e.target.value)}
+        />
+        <Button
+          size="sm"
+          onClick={async () => {
+            await upsertCmsContent({
+              key: "work_solution_title",
+              value:
+                workTitle ||
+                data.contents?.find(
+                  (c: any) => c.key === "work_solution_title",
+                )?.value ||
+                "How it works",
+            });
+            await upsertCmsContent({
+              key: "work_solution_body",
+              value:
+                workJson ||
+                data.contents?.find((c: any) => c.key === "work_solution_body")
+                  ?.value ||
+                "[]",
+            });
+            setMsg("Work solution saved");
+            refetch();
+          }}
+        >
+          Save work solution
         </Button>
       </section>
 

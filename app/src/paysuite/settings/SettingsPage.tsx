@@ -14,6 +14,11 @@ import {
   ensureDefaultPlans,
   updateMyProfile,
   issueMobileToken,
+  getCustomizations,
+  upsertCustomization,
+  getEmailTemplates,
+  upsertEmailTemplate,
+  requestAccountDelete,
 } from "wasp/client/operations";
 import { useAuth } from "wasp/client/auth";
 import { PageShell, money, DataTable } from "../shared/ui";
@@ -29,6 +34,12 @@ export default function SettingsPage() {
   const { data: methods, refetch: refetchMethods } =
     useQuery(getPaymentMethods);
   const { data: myPlan, refetch: refetchPlan } = useQuery(getMyPlan);
+  const { data: customizationsRaw, refetch: refetchCustom } =
+    useQuery(getCustomizations);
+  const { data: emailTemplatesRaw, refetch: refetchEmail } =
+    useQuery(getEmailTemplates);
+  const customizations = (customizationsRaw || {}) as Record<string, any>;
+  const emailTemplates = (emailTemplatesRaw || []) as any[];
 
   const [taxName, setTaxName] = useState("");
   const [taxRate, setTaxRate] = useState("10");
@@ -37,6 +48,12 @@ export default function SettingsPage() {
   const [noteType, setNoteType] = useState("invoice");
   const [methodName, setMethodName] = useState("");
   const [mobileToken, setMobileToken] = useState<string | null>(null);
+  const [invoicePrefix, setInvoicePrefix] = useState("INV");
+  const [estimatePrefix, setEstimatePrefix] = useState("EST");
+  const [emailType, setEmailType] = useState("invoice");
+  const [emailSubject, setEmailSubject] = useState("");
+  const [emailBody, setEmailBody] = useState("");
+  const [settingsMsg, setSettingsMsg] = useState<string | null>(null);
   const [profile, setProfile] = useState({
     firstName: user?.firstName || "",
     lastName: user?.lastName || "",
@@ -258,6 +275,137 @@ export default function SettingsPage() {
               </tr>
             ))}
           </DataTable>
+        </section>
+
+        <section className="bg-card space-y-3 rounded-xl border p-4 lg:col-span-2">
+          <h2 className="font-semibold">Document customizations</h2>
+          <p className="text-muted-foreground text-sm">
+            Invoice / estimate prefixes and defaults (stored per tenant).
+          </p>
+          {settingsMsg && (
+            <p className="text-sm text-emerald-700">{settingsMsg}</p>
+          )}
+          <div className="grid gap-2 sm:grid-cols-2">
+            <div>
+              <Label>Invoice prefix</Label>
+              <Input
+                value={
+                  invoicePrefix ||
+                  customizations?.invoice?.prefix ||
+                  "INV"
+                }
+                onChange={(e) => setInvoicePrefix(e.target.value)}
+              />
+            </div>
+            <div>
+              <Label>Estimate prefix</Label>
+              <Input
+                value={
+                  estimatePrefix ||
+                  customizations?.estimate?.prefix ||
+                  "EST"
+                }
+                onChange={(e) => setEstimatePrefix(e.target.value)}
+              />
+            </div>
+          </div>
+          <Button
+            onClick={async () => {
+              await upsertCustomization({
+                key: "invoice",
+                value: {
+                  ...(customizations?.invoice || {}),
+                  prefix: invoicePrefix || "INV",
+                },
+              });
+              await upsertCustomization({
+                key: "estimate",
+                value: {
+                  ...(customizations?.estimate || {}),
+                  prefix: estimatePrefix || "EST",
+                },
+              });
+              setSettingsMsg("Customizations saved");
+              refetchCustom();
+            }}
+          >
+            Save customizations
+          </Button>
+        </section>
+
+        <section className="bg-card space-y-3 rounded-xl border p-4 lg:col-span-2">
+          <h2 className="font-semibold">Email templates</h2>
+          <div className="grid gap-2 sm:grid-cols-3">
+            <select
+              className="border-input bg-background h-10 rounded-md border px-3 text-sm"
+              value={emailType}
+              onChange={(e) => setEmailType(e.target.value)}
+            >
+              <option value="invoice">Invoice</option>
+              <option value="estimate">Estimate</option>
+              <option value="payment">Payment receipt</option>
+              <option value="reminder">Payment reminder</option>
+            </select>
+            <Input
+              placeholder="Subject"
+              value={emailSubject}
+              onChange={(e) => setEmailSubject(e.target.value)}
+            />
+            <Button
+              onClick={async () => {
+                await upsertEmailTemplate({
+                  type: emailType,
+                  subject: emailSubject,
+                  body: emailBody,
+                });
+                setSettingsMsg("Email template saved");
+                setEmailSubject("");
+                setEmailBody("");
+                refetchEmail();
+              }}
+            >
+              Save template
+            </Button>
+          </div>
+          <Textarea
+            placeholder="Email body (supports {{customer}}, {{number}}, {{amount}})"
+            value={emailBody}
+            onChange={(e) => setEmailBody(e.target.value)}
+          />
+          <DataTable
+            headers={["Type", "Subject", "Body"]}
+            empty={!emailTemplates?.length}
+          >
+            {(emailTemplates || []).map((t: any) => (
+              <tr key={t.type}>
+                <td className="px-4 py-2">{t.type}</td>
+                <td className="px-4 py-2">{t.subject}</td>
+                <td className="px-4 py-2 max-w-md truncate">{t.body}</td>
+              </tr>
+            ))}
+          </DataTable>
+        </section>
+
+        <section className="bg-card space-y-3 rounded-xl border p-4 lg:col-span-2">
+          <h2 className="font-semibold text-rose-700">Danger zone</h2>
+          <p className="text-muted-foreground text-sm">
+            Request account deletion. Landlord reviews soft-delete requests.
+          </p>
+          <Button
+            variant="destructive"
+            onClick={async () => {
+              if (
+                !confirm(
+                  "Request permanent account deletion? This cannot be undone from the app.",
+                )
+              )
+                return;
+              await requestAccountDelete({ reason: "user requested" });
+              setSettingsMsg("Account deletion request recorded");
+            }}
+          >
+            Request account delete
+          </Button>
         </section>
 
         <section className="bg-card space-y-3 rounded-xl border p-4 lg:col-span-2">

@@ -11,6 +11,8 @@ import {
   sendInvoiceEmail,
   getInvoicePdf,
   ensureInvoicePortalLink,
+  updateInvoice,
+  cloneInvoice,
 } from "wasp/client/operations";
 import {
   PageShell,
@@ -220,6 +222,49 @@ export default function InvoiceDetailPage() {
               </Button>
             </>
           )}
+          <Button
+            variant="outline"
+            disabled={busy}
+            onClick={async () => {
+              setBusy(true);
+              try {
+                await updateInvoice({
+                  id: inv.id,
+                  recurring: !inv.recurring,
+                } as any);
+                setMessage(
+                  inv.recurring
+                    ? "Recurring disabled"
+                    : "Recurring enabled (monthly job clones when due)",
+                );
+                refetch();
+              } catch (e: any) {
+                setError(e?.message || "Failed");
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            {inv.recurring ? "Disable recurring" : "Enable recurring"}
+          </Button>
+          <Button
+            variant="outline"
+            disabled={busy}
+            onClick={async () => {
+              setBusy(true);
+              try {
+                const clone = await cloneInvoice({ id: inv.id });
+                setMessage(`Cloned as ${clone.invoiceFullNumber}`);
+                window.location.href = `/invoices/${clone.id}`;
+              } catch (e: any) {
+                setError(e?.message || "Clone failed");
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            Clone
+          </Button>
           <Button asChild variant="ghost">
             <Link to="/invoices">Back</Link>
           </Button>

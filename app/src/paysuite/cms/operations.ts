@@ -101,18 +101,53 @@ export const seedCmsDefaults: any = async (_args: void, context: any) => {
       },
     });
   }
-  await context.entities.CmsSiteContent.upsert({
-    where: { key: "hero_title" },
-    create: {
-      key: "hero_title",
-      value: "Invoicing & billing for growing teams",
-    },
-    update: {},
-  });
-  await context.entities.CmsSiteContent.upsert({
-    where: { key: "contact_email" },
-    create: { key: "contact_email", value: "hello@paysuite.app" },
-    update: {},
-  });
+  const defaults: Record<string, string> = {
+    hero_title: "Invoicing & billing for growing teams",
+    hero_subtitle:
+      "Multi-tenant invoices, estimates, expenses, support tickets, and SaaS plans — web + mobile.",
+    contact_email: "hello@paysuite.app",
+    choose_us_title: "Why choose PaySuite",
+    choose_us_body:
+      JSON.stringify([
+        {
+          title: "Multi-tenant ready",
+          body: "Isolated company workspaces with plan limits and roles.",
+        },
+        {
+          title: "Customer portal",
+          body: "Share secure invoice links with Stripe or external PSP references.",
+        },
+        {
+          title: "Mobile API",
+          body: "JWT mobile surface matching Flutter auth, CRUD, and billing.",
+        },
+      ]),
+    work_solution_title: "How it works",
+    work_solution_body:
+      JSON.stringify([
+        {
+          step: 1,
+          title: "Sign up",
+          body: "Create your company workspace and pick a plan.",
+        },
+        {
+          step: 2,
+          title: "Bill customers",
+          body: "Send invoices and estimates; collect payments online.",
+        },
+        {
+          step: 3,
+          title: "Grow",
+          body: "Track expenses, tickets, and team roles as you scale.",
+        },
+      ]),
+  };
+  for (const [key, value] of Object.entries(defaults)) {
+    await context.entities.CmsSiteContent.upsert({
+      where: { key },
+      create: { key, value },
+      update: {},
+    });
+  }
   return getCmsAdmin(undefined as any, context);
 };

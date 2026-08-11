@@ -1,6 +1,14 @@
 import { HttpError } from "wasp/server";
 import type { MobileApi } from "wasp/server/api";
 import type { PrismaClient } from "@prisma/client";
+import {
+  createProviderId,
+  createUser,
+  findAuthIdentity,
+  getProviderDataWithPassword,
+  sanitizeAndSerializeProviderData,
+  updateAuthIdentityProviderData,
+} from "wasp/auth/utils";
 import { resolveBearerToken, signMobileToken } from "./jwt";
 import { verifyEmailPassword } from "./verifyCredentials";
 import { buildDocumentHtml, customerDisplay } from "../documents/pdfHtml";
@@ -12,6 +20,7 @@ import {
   dueAmount,
 } from "../shared/tenant";
 import { assertWithinPlanLimit } from "../shared/planLimits";
+import { PERMISSIONS } from "../shared/permissions";
 
 async function resolveUser(
   req: { headers: Record<string, any> },
@@ -90,6 +99,7 @@ export const mobileApi: MobileApi = async (req, res, context) => {
     const method = (req.method || "GET").toUpperCase();
     const body = req.body || {};
 
+    // ─── Public auth (no token) ─────────────────────────────────────────────
     if (method === "POST" && (path === "auth/login" || path === "login")) {
       const email = String(body.email || "").trim().toLowerCase();
       const password = String(body.password || "");
@@ -141,9 +151,211 @@ export const mobileApi: MobileApi = async (req, res, context) => {
       });
     }
 
+    if (method === "POST" && path === "auth/register") {
+      const email = String(body.email || "").trim().toLowerCase();
+      const password = String(body.password || "");
+      const firstName = String(body.firstName || body.name || "").trim() || null;
+      const lastName = String(body.lastName || "").trim() || null;
+      const companyName =
+        String(body.companyName || body.company || "").trim() || null;
+      if (!email || !password) {
+        throw new HttpError(400, "Email and password are required");
+      }
+      if (password.length < 6) {
+        throw new HttpError(400, "Password must be at least 6 characters");
+      }
+      const providerId = createProviderId("email", email);
+      const existing = await findAuthIdentity(providerId);
+      if (existing) throw new HttpError(422, "User already exists");
+
+      const providerData = await sanitizeAndSerializeProviderData<"email">({
+        hashedPassword: password,
+        isEmailVerified: true,
+        emailVerificationSentAt: null,
+        passwordResetSentAt: null,
+      });
+      const created = await createUser(providerId, providerData, {
+        email,
+        username: email,
+        firstName,
+        lastName,
+        companyName,
+        isSubscriber: true,
+      } as any);
+      // Auto-tenant
+      const tid = await tenantIdFor(created as any, context.entities);
+      const token = signMobileToken(created.id, created.email);
+      return res.status(201).json({
+        token,
+        tokenType: "Bearer",
+        expiresInDays: 7,
+        user: {
+          id: created.id,
+          email: created.email,
+          firstName: created.firstName,
+          lastName: created.lastName,
+          companyName: created.companyName,
+          tenantId: tid,
+        },
+      });
+    }
+
+    // Forgot password → OTP stub (stores token in Customization key for demo)
+    if (
+      method === "POST" &&
+      (path === "auth/forgot-password" || path === "auth/generate-otp")
+    ) {
+      const email = String(body.email || "").trim().toLowerCase();
+      if (!email) throw new HttpError(400, "Email required");
+      const user = await context.entities.User.findFirst({
+        where: { email: { equals: email, mode: "insensitive" } },
+      });
+      // Always 200 to avoid email enumeration
+      const otp = String(Math.floor(100000 + Math.random() * 900000));
+      if (user) {
+        const tid = await tenantIdFor(user as any, context.entities);
+        await context.entities.Customization.upsert({
+          where: {
+            tenantId_key: {
+              tenantId: tid,
+              key: `otp:${email}`,
+            },
+          },
+          create: {
+            tenantId: tid,
+            key: `otp:${email}`,
+            value: JSON.stringify({
+              otp,
+              expiresAt: Date.now() + 15 * 60 * 1000,
+            }),
+          },
+          update: {
+            value: JSON.stringify({
+              otp,
+              expiresAt: Date.now() + 15 * 60 * 1000,
+            }),
+          },
+        });
+      }
+      return res.json({
+        ok: true,
+        message: "If the account exists, an OTP was sent",
+        // Dev convenience (never in production responses for real SMS)
+        ...(process.env.NODE_ENV !== "production" && user ? { debugOtp: otp } : {}),
+      });
+    }
+
+    if (method === "POST" && path === "auth/verify-otp") {
+      const email = String(body.email || "").trim().toLowerCase();
+      const otp = String(body.otp || body.code || "").trim();
+      if (!email || !otp) throw new HttpError(400, "Email and OTP required");
+      const user = await context.entities.User.findFirst({
+        where: { email: { equals: email, mode: "insensitive" } },
+      });
+      if (!user) throw new HttpError(400, "Invalid OTP");
+      const keyTenant = await tenantIdFor(user as any, context.entities);
+      const row = await context.entities.Customization.findUnique({
+        where: { tenantId_key: { tenantId: keyTenant, key: `otp:${email}` } },
+      });
+      if (!row) throw new HttpError(400, "Invalid or expired OTP");
+      const data = JSON.parse(row.value);
+      if (data.otp !== otp || data.expiresAt < Date.now()) {
+        throw new HttpError(400, "Invalid or expired OTP");
+      }
+      const resetToken = crypto.randomBytes(24).toString("hex");
+      await context.entities.Customization.update({
+        where: { tenantId_key: { tenantId: keyTenant, key: `otp:${email}` } },
+        data: {
+          value: JSON.stringify({
+            ...data,
+            resetToken,
+            verified: true,
+          }),
+        },
+      });
+      return res.json({ ok: true, token: resetToken, email });
+    }
+
+    if (
+      method === "POST" &&
+      (path === "auth/confirm-password" || path === "auth/reset-password")
+    ) {
+      const email = String(body.email || "").trim().toLowerCase();
+      const token = String(body.token || "").trim();
+      const password = String(body.password || body.newPassword || "");
+      if (!email || !token || !password) {
+        throw new HttpError(400, "Email, token and password required");
+      }
+      if (password.length < 6) throw new HttpError(400, "Password too short");
+      const user = await context.entities.User.findFirst({
+        where: { email: { equals: email, mode: "insensitive" } },
+      });
+      if (!user) throw new HttpError(400, "Invalid token");
+      const keyTenant = await tenantIdFor(user as any, context.entities);
+      const row = await context.entities.Customization.findUnique({
+        where: { tenantId_key: { tenantId: keyTenant, key: `otp:${email}` } },
+      });
+      if (!row) throw new HttpError(400, "Invalid token");
+      const data = JSON.parse(row.value);
+      if (!data.verified || data.resetToken !== token) {
+        throw new HttpError(400, "Invalid token");
+      }
+      const providerId = createProviderId("email", email);
+      const identity = await findAuthIdentity(providerId);
+      if (!identity) throw new HttpError(400, "No password identity");
+      const existing = getProviderDataWithPassword<"email">(identity.providerData);
+      await updateAuthIdentityProviderData<"email">(providerId, existing, {
+        hashedPassword: password,
+      });
+      await context.entities.Customization.delete({
+        where: { tenantId_key: { tenantId: keyTenant, key: `otp:${email}` } },
+      });
+      return res.json({ ok: true, message: "Password updated" });
+    }
+
+    // Social login stub (Flutter has this; map to email identity if provided)
+    if (method === "POST" && path === "auth/social") {
+      const email = String(body.email || "").trim().toLowerCase();
+      if (!email) throw new HttpError(400, "Email required from social provider");
+      let user = await context.entities.User.findFirst({
+        where: { email: { equals: email, mode: "insensitive" } },
+      });
+      if (!user) {
+        const providerId = createProviderId("email", email);
+        const providerData = await sanitizeAndSerializeProviderData<"email">({
+          hashedPassword: crypto.randomBytes(16).toString("hex"),
+          isEmailVerified: true,
+          emailVerificationSentAt: null,
+          passwordResetSentAt: null,
+        });
+        user = await createUser(providerId, providerData, {
+          email,
+          username: email,
+          firstName: body.firstName || body.name || null,
+          lastName: body.lastName || null,
+          isSubscriber: true,
+        } as any);
+      }
+      const token = signMobileToken(user.id, user.email);
+      return res.json({
+        token,
+        tokenType: "Bearer",
+        expiresInDays: 7,
+        user: {
+          id: user.id,
+          email: user.email,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          companyName: user.companyName,
+          tenantId: user.tenantId,
+        },
+      });
+    }
+
     const user = await resolveUser(req as any, context.entities);
     const tenantId = await tenantIdFor(user as any, context.entities);
     const E = context.entities;
+    const q = (req.query || {}) as Record<string, any>;
 
     if (method === "POST" && path === "auth/refresh") {
       return res.json({
@@ -151,6 +363,24 @@ export const mobileApi: MobileApi = async (req, res, context) => {
         tokenType: "Bearer",
         expiresInDays: 7,
       });
+    }
+
+    if (method === "POST" && path === "change-password") {
+      const current = String(body.currentPassword || body.oldPassword || "");
+      const next = String(body.password || body.newPassword || "");
+      if (!current || !next) throw new HttpError(400, "Passwords required");
+      if (next.length < 6) throw new HttpError(400, "Password too short");
+      const email = (user.email || "").toLowerCase();
+      const ok = await verifyEmailPassword(email, current);
+      if (!ok) throw new HttpError(401, "Current password incorrect");
+      const providerId = createProviderId("email", email);
+      const identity = await findAuthIdentity(providerId);
+      if (!identity) throw new HttpError(400, "No password identity");
+      const existing = getProviderDataWithPassword<"email">(identity.providerData);
+      await updateAuthIdentityProviderData<"email">(providerId, existing, {
+        hashedPassword: next,
+      });
+      return res.json({ ok: true });
     }
 
     if (method === "GET" && (path === "statistics" || path === "")) {
@@ -176,11 +406,22 @@ export const mobileApi: MobileApi = async (req, res, context) => {
       });
     }
 
-    // Customers
+    // Customers (filters: status, search)
     if (path === "customers" && method === "GET") {
+      const where: any = { tenantId };
+      if (q.status) where.status = String(q.status);
+      if (q.search || q.q) {
+        const s = String(q.search || q.q);
+        where.OR = [
+          { firstName: { contains: s, mode: "insensitive" } },
+          { lastName: { contains: s, mode: "insensitive" } },
+          { email: { contains: s, mode: "insensitive" } },
+          { companyName: { contains: s, mode: "insensitive" } },
+        ];
+      }
       return res.json(
         await E.Customer.findMany({
-          where: { tenantId },
+          where,
           orderBy: { createdAt: "desc" },
         }),
       );
@@ -284,10 +525,20 @@ export const mobileApi: MobileApi = async (req, res, context) => {
       return res.json({ ok: true });
     }
 
-    // Invoices
+    // Invoices (filters: status, customerId, search)
     if (path === "invoices" && method === "GET") {
+      const where: any = { tenantId };
+      if (q.status) where.status = String(q.status);
+      if (q.customerId) where.customerId = String(q.customerId);
+      if (q.search || q.q) {
+        const s = String(q.search || q.q);
+        where.OR = [
+          { invoiceFullNumber: { contains: s, mode: "insensitive" } },
+          { note: { contains: s, mode: "insensitive" } },
+        ];
+      }
       const rows = await E.Invoice.findMany({
-        where: { tenantId },
+        where,
         include: { customer: true },
         orderBy: { createdAt: "desc" },
       });
@@ -463,6 +714,115 @@ export const mobileApi: MobileApi = async (req, res, context) => {
         filename: `${invoice.invoiceFullNumber}.pdf`,
       });
     }
+    if (path.match(/^invoices\/[^/]+$/) && method === "PUT") {
+      const id = path.split("/")[1];
+      const inv = await E.Invoice.findFirst({
+        where: { id, tenantId },
+        include: { details: true },
+      });
+      if (!inv) throw new HttpError(404);
+      const data: any = {};
+      if (body.note !== undefined) data.note = body.note;
+      if (body.status) data.status = body.status;
+      if (body.dueDate) data.dueDate = new Date(body.dueDate);
+      if (body.issueDate) data.issueDate = new Date(body.issueDate);
+      if (body.recurring !== undefined) data.recurring = !!body.recurring;
+      if (body.invoiceTemplate != null)
+        data.invoiceTemplate = Number(body.invoiceTemplate);
+      if (body.lines?.length) {
+        await E.InvoiceDetail.deleteMany({ where: { invoiceId: id } });
+        const taxRateTotal = (body.taxes || []).reduce(
+          (s: number, t: any) => s + Number(t.rate || 0),
+          0,
+        );
+        const totals = computeLineTotals(
+          body.lines,
+          body.discountType || inv.discountType,
+          body.discountAmount ?? inv.discountAmount,
+          taxRateTotal,
+        );
+        data.subTotal = totals.subTotal;
+        data.discountAmount = totals.discountAmount;
+        data.totalAmount = totals.totalAmount;
+        data.grandTotal = totals.grandTotal;
+        data.details = {
+          create: body.lines.map((l: any) => ({
+            productId: l.productId,
+            quantity: Number(l.quantity),
+            price: Number(l.price),
+          })),
+        };
+      }
+      const updated = await E.Invoice.update({
+        where: { id },
+        data,
+        include: { customer: true, details: true },
+      });
+      return res.json({ ...updated, dueAmount: dueAmount(updated) });
+    }
+    if (
+      path.match(/^invoices\/[^/]+\/clone$/) ||
+      path.match(/^invoice-clone\/[^/]+$/)
+    ) {
+      if (method === "POST") {
+        const parts = path.split("/").filter(Boolean);
+        const id =
+          path.startsWith("invoice-clone/")
+            ? parts[1]
+            : parts[1]; // invoices/:id/clone
+        const src = await E.Invoice.findFirst({
+          where: { id, tenantId },
+          include: { details: true, taxes: true },
+        });
+        if (!src) throw new HttpError(404, "Invoice not found");
+        await assertWithinPlanLimit(E as any, tenantId, "invoices");
+        const last = await E.Invoice.findFirst({
+          where: { tenantId },
+          orderBy: { invoiceNumber: "desc" },
+        });
+        const invoiceNumber = (last?.invoiceNumber || 0) + 1;
+        const clone = await E.Invoice.create({
+          data: {
+            tenantId,
+            customerId: src.customerId,
+            createdById: user.id,
+            issueDate: new Date(),
+            dueDate: new Date(Date.now() + 14 * 86400000),
+            invoiceNumber,
+            invoiceFullNumber: formatDocNumber("INV", invoiceNumber),
+            referenceNumber: `clone-of-${src.id}`,
+            status: "due",
+            subTotal: src.subTotal,
+            discountType: src.discountType,
+            discountAmount: src.discountAmount,
+            totalAmount: src.totalAmount,
+            grandTotal: src.grandTotal,
+            receivedAmount: 0,
+            note: src.note,
+            invoiceTemplate: src.invoiceTemplate,
+            portalToken: crypto.randomBytes(24).toString("hex"),
+            details: {
+              create: src.details.map((d) => ({
+                productId: d.productId,
+                quantity: d.quantity,
+                price: d.price,
+              })),
+            },
+            taxes: {
+              create: src.taxes
+                .filter((t) => t.taxId)
+                .map((t) => ({
+                  taxId: t.taxId,
+                  rate: t.rate,
+                  amount: t.amount,
+                })),
+            },
+          },
+          include: { customer: true },
+        });
+        return res.status(201).json({ ...clone, dueAmount: dueAmount(clone) });
+      }
+    }
     if (path.startsWith("invoices/") && method === "DELETE") {
       const id = path.split("/")[1];
       const existing = await E.Invoice.findFirst({ where: { id, tenantId } });
@@ -473,9 +833,12 @@ export const mobileApi: MobileApi = async (req, res, context) => {
 
     // Estimates
     if (path === "estimates" && method === "GET") {
+      const where: any = { tenantId };
+      if (q.status) where.status = String(q.status);
+      if (q.customerId) where.customerId = String(q.customerId);
       return res.json(
         await E.Estimate.findMany({
-          where: { tenantId },
+          where,
           include: { customer: true },
           orderBy: { createdAt: "desc" },
         }),
@@ -734,6 +1097,635 @@ export const mobileApi: MobileApi = async (req, res, context) => {
     }
 
     if (path === "plans" && method === "GET") {
+      let plans = await E.Plan.findMany({
+        where: { status: "active" },
+        orderBy: { price: "asc" },
+      });
+      if (!plans.length) {
+        await E.Plan.createMany({
+          data: [
+            {
+              name: "Free",
+              tag: "free",
+              frequency: "monthly",
+              price: 0,
+              isFree: true,
+              isDefault: true,
+              trialDays: 14,
+              numberOfProducts: 20,
+              numberOfCustomers: 20,
+              numberOfEstimates: 50,
+              numberOfInvoices: 50,
+              status: "active",
+            },
+            {
+              name: "Business",
+              tag: "business",
+              frequency: "monthly",
+              price: 29,
+              isFree: false,
+              numberOfProducts: 200,
+              numberOfCustomers: 500,
+              numberOfEstimates: 1000,
+              numberOfInvoices: 1000,
+              status: "active",
+            },
+          ],
+        });
+        plans = await E.Plan.findMany({
+          where: { status: "active" },
+          orderBy: { price: "asc" },
+        });
+      }
+      return res.json(plans);
+    }
+
+    if (path === "taxes" && method === "GET") {
+      return res.json(await E.Tax.findMany({ where: { tenantId } }));
+    }
+    if (path === "taxes" && method === "POST") {
+      return res.status(201).json(
+        await E.Tax.create({
+          data: {
+            tenantId,
+            name: body.name || "Tax",
+            rate: Number(body.rate) || 0,
+          },
+        }),
+      );
+    }
+    if (path.startsWith("taxes/") && method === "PUT") {
+      const id = path.split("/")[1];
+      const existing = await E.Tax.findFirst({ where: { id, tenantId } });
+      if (!existing) throw new HttpError(404);
+      return res.json(
+        await E.Tax.update({
+          where: { id },
+          data: {
+            name: body.name ?? existing.name,
+            rate: body.rate != null ? Number(body.rate) : existing.rate,
+          },
+        }),
+      );
+    }
+    if (path.startsWith("taxes/") && method === "DELETE") {
+      const id = path.split("/")[1];
+      const existing = await E.Tax.findFirst({ where: { id, tenantId } });
+      if (!existing) throw new HttpError(404);
+      await E.Tax.delete({ where: { id } });
+      return res.json({ ok: true });
+    }
+
+    // Notes
+    if (path === "notes" && method === "GET") {
+      const where: any = { tenantId };
+      if (q.type) where.type = String(q.type);
+      return res.json(
+        await E.Note.findMany({ where, orderBy: { createdAt: "desc" } }),
+      );
+    }
+    if (path === "notes" && method === "POST") {
+      return res.status(201).json(
+        await E.Note.create({
+          data: {
+            tenantId,
+            type: body.type || "invoice",
+            name: body.name || "Note",
+            note: body.note || body.body || "",
+          },
+        }),
+      );
+    }
+    if (path.startsWith("notes/") && method === "PUT") {
+      const id = path.split("/")[1];
+      const existing = await E.Note.findFirst({ where: { id, tenantId } });
+      if (!existing) throw new HttpError(404);
+      return res.json(
+        await E.Note.update({
+          where: { id },
+          data: {
+            name: body.name ?? existing.name,
+            note: body.note ?? body.body ?? existing.note,
+            type: body.type ?? existing.type,
+          },
+        }),
+      );
+    }
+    if (path.startsWith("notes/") && method === "DELETE") {
+      const id = path.split("/")[1];
+      const existing = await E.Note.findFirst({ where: { id, tenantId } });
+      if (!existing) throw new HttpError(404);
+      await E.Note.delete({ where: { id } });
+      return res.json({ ok: true });
+    }
+
+    // Payment methods
+    if (
+      (path === "payment-methods" ||
+        path === "selected/payment-methods" ||
+        path === "selected/customer-payment-method") &&
+      method === "GET"
+    ) {
+      return res.json(
+        await E.PaymentMethod.findMany({
+          where: { OR: [{ tenantId }, { tenantId: null }] },
+          orderBy: { name: "asc" },
+        }),
+      );
+    }
+    if (path === "payment-methods" && method === "POST") {
+      return res.status(201).json(
+        await E.PaymentMethod.create({
+          data: {
+            tenantId,
+            name: body.name || "Cash",
+            type: body.type || "cash",
+          },
+        }),
+      );
+    }
+    if (path.startsWith("payment-methods/") && method === "PUT") {
+      const id = path.split("/")[1];
+      const existing = await E.PaymentMethod.findFirst({
+        where: { id, OR: [{ tenantId }, { tenantId: null }] },
+      });
+      if (!existing) throw new HttpError(404);
+      return res.json(
+        await E.PaymentMethod.update({
+          where: { id },
+          data: {
+            name: body.name ?? existing.name,
+            type: body.type ?? existing.type,
+          },
+        }),
+      );
+    }
+    if (path.startsWith("payment-methods/") && method === "DELETE") {
+      const id = path.split("/")[1];
+      const existing = await E.PaymentMethod.findFirst({
+        where: { id, tenantId },
+      });
+      if (!existing) throw new HttpError(404);
+      await E.PaymentMethod.delete({ where: { id } });
+      return res.json({ ok: true });
+    }
+
+    // Categories / units
+    if (
+      (path === "categories" || path === "selected/categories") &&
+      method === "GET"
+    ) {
+      const where: any = { tenantId };
+      if (q.type) where.type = String(q.type);
+      return res.json(
+        await E.Category.findMany({ where, orderBy: { name: "asc" } }),
+      );
+    }
+    if (path === "categories" && method === "POST") {
+      return res.status(201).json(
+        await E.Category.create({
+          data: {
+            tenantId,
+            name: body.name || "Category",
+            type: body.type || "expense",
+          },
+        }),
+      );
+    }
+    if (path.startsWith("categories/") && method === "PUT") {
+      const id = path.split("/")[1];
+      const existing = await E.Category.findFirst({ where: { id, tenantId } });
+      if (!existing) throw new HttpError(404);
+      return res.json(
+        await E.Category.update({
+          where: { id },
+          data: {
+            name: body.name ?? existing.name,
+            type: body.type ?? existing.type,
+          },
+        }),
+      );
+    }
+    if (path.startsWith("categories/") && method === "DELETE") {
+      const id = path.split("/")[1];
+      const existing = await E.Category.findFirst({ where: { id, tenantId } });
+      if (!existing) throw new HttpError(404);
+      await E.Category.delete({ where: { id } });
+      return res.json({ ok: true });
+    }
+    if ((path === "units" || path === "selected/units") && method === "GET") {
+      return res.json(
+        await E.Unit.findMany({ where: { tenantId }, orderBy: { name: "asc" } }),
+      );
+    }
+    if (path === "units" && method === "POST") {
+      return res.status(201).json(
+        await E.Unit.create({
+          data: {
+            tenantId,
+            name: body.name || "Unit",
+            shortName: body.shortName || body.name || "u",
+          },
+        }),
+      );
+    }
+
+    // Notifications
+    if (
+      (path === "notifications" || path === "app/mobile/notifications") &&
+      method === "GET"
+    ) {
+      return res.json(
+        await E.Notification.findMany({
+          where: { userId: user.id },
+          orderBy: { createdAt: "desc" },
+          take: 100,
+        }),
+      );
+    }
+    if (
+      path.match(/^notifications\/[^/]+\/read$/) ||
+      path.match(/^app\/read-notifications\/[^/]+$/)
+    ) {
+      if (method === "POST" || method === "PUT") {
+        const id = path.split("/").filter(Boolean).pop()!;
+        const n = await E.Notification.findFirst({
+          where: { id, userId: user.id },
+        });
+        if (!n) throw new HttpError(404);
+        return res.json(
+          await E.Notification.update({
+            where: { id },
+            data: { isRead: true },
+          }),
+        );
+      }
+    }
+    if (
+      (path === "read-all-notifications" ||
+        path === "notifications/read-all") &&
+      (method === "POST" || method === "PUT")
+    ) {
+      await E.Notification.updateMany({
+        where: { userId: user.id, isRead: false },
+        data: { isRead: true },
+      });
+      return res.json({ ok: true });
+    }
+
+    // Permissions / roles / users
+    if (
+      (path === "my-permissions" || path === "permissions") &&
+      method === "GET"
+    ) {
+      const roleUsers = await E.RoleUser.findMany({
+        where: { userId: user.id },
+        include: { role: true },
+      });
+      const perms = new Set<string>();
+      for (const ru of roleUsers) {
+        try {
+          const p = JSON.parse(ru.role.permissions || "[]");
+          if (Array.isArray(p)) p.forEach((x: string) => perms.add(x));
+        } catch {
+          /* ignore */
+        }
+      }
+      // Owners / subscribers get full set when no roles assigned
+      if (!perms.size) {
+        PERMISSIONS.forEach((p) => perms.add(p));
+      }
+      return res.json({ permissions: [...perms], all: PERMISSIONS });
+    }
+    if ((path === "roles" || path === "selected/roles") && method === "GET") {
+      return res.json(
+        await E.Role.findMany({
+          where: { tenantId },
+          orderBy: { name: "asc" },
+        }),
+      );
+    }
+    if (path === "roles" && method === "POST") {
+      return res.status(201).json(
+        await E.Role.create({
+          data: {
+            tenantId,
+            name: body.name || "Role",
+            permissions: JSON.stringify(body.permissions || []),
+          },
+        }),
+      );
+    }
+    if (path === "users" && method === "GET") {
+      return res.json(
+        await E.User.findMany({
+          where: { tenantId },
+          select: {
+            id: true,
+            email: true,
+            firstName: true,
+            lastName: true,
+            username: true,
+            createdAt: true,
+          },
+          orderBy: { createdAt: "desc" },
+        }),
+      );
+    }
+    if (path === "user-invite" && method === "POST") {
+      const email = String(body.email || "").trim().toLowerCase();
+      if (!email) throw new HttpError(400, "Email required");
+      const token = crypto.randomBytes(16).toString("hex");
+      const invite = await E.UserInvite.create({
+        data: {
+          tenantId,
+          email,
+          roleId: body.roleId || null,
+          invitedById: user.id,
+          token,
+          status: "pending",
+        },
+      });
+      await E.Notification.create({
+        data: {
+          tenantId,
+          userId: user.id,
+          title: "Invite sent",
+          body: `Invite created for ${email}`,
+          link: "/users",
+        },
+      });
+      return res.status(201).json(invite);
+    }
+
+    // Billing history + plan activate
+    if ((path === "billings" || path === "billing") && method === "GET") {
+      return res.json(
+        await E.BillingHistory.findMany({
+          where: { tenantId },
+          include: { plan: true, paymentMethod: true },
+          orderBy: { createdAt: "desc" },
+        }),
+      );
+    }
+    if (
+      (path === "plan-buy" || path === "plans/activate" || path === "activate-plan") &&
+      method === "POST"
+    ) {
+      const planId = body.planId || body.id;
+      const plan = await E.Plan.findFirst({
+        where: { id: planId, status: "active" },
+      });
+      if (!plan) throw new HttpError(404, "Plan not found");
+      const start = new Date();
+      let end: Date | null = null;
+      if (!plan.isFree) {
+        end = new Date(start);
+        if (plan.frequency === "yearly") end.setFullYear(end.getFullYear() + 1);
+        else end.setMonth(end.getMonth() + 1);
+      }
+      const subscriber = await E.Subscriber.create({
+        data: {
+          userId: user.id,
+          planId: plan.id,
+          tenantId,
+          startDate: start,
+          endDate: end,
+        },
+      });
+      await E.BillingHistory.create({
+        data: {
+          invoiceNumber: `SUB-${Date.now()}`,
+          paidById: user.id,
+          subscriberId: subscriber.id,
+          planId: plan.id,
+          tenantId,
+          status: plan.isFree || plan.price === 0 ? "paid" : "due",
+          amount: plan.price,
+        },
+      });
+      await E.Tenant.update({
+        where: { id: tenantId },
+        data: { status: "active" },
+      });
+      await E.User.update({
+        where: { id: user.id },
+        data: {
+          isSubscriber: true,
+          subscriptionPlan: plan.tag || plan.name,
+          subscriptionStatus:
+            plan.isFree || plan.price === 0 ? "active" : "past_due",
+          datePaid: plan.isFree || plan.price === 0 ? new Date() : null,
+        },
+      });
+      await E.Notification.create({
+        data: {
+          tenantId,
+          userId: user.id,
+          title: "Plan activated",
+          body: `${plan.name} is now your active plan.`,
+          link: "/billing",
+        },
+      });
+      return res.json({ subscriber, plan });
+    }
+
+    // Customizations / company settings
+    if (
+      (path === "customizations" || path === "settings") &&
+      method === "GET"
+    ) {
+      const rows = await E.Customization.findMany({ where: { tenantId } });
+      const map: Record<string, any> = {};
+      for (const r of rows) {
+        try {
+          map[r.key] = JSON.parse(r.value);
+        } catch {
+          map[r.key] = r.value;
+        }
+      }
+      return res.json(map);
+    }
+    if (
+      (path === "customizations" ||
+        path === "settings" ||
+        path === "invoice-setting" ||
+        path === "estimate-setting" ||
+        path === "payment-setting") &&
+      method === "PUT"
+    ) {
+      const key =
+        path === "invoice-setting"
+          ? "invoice"
+          : path === "estimate-setting"
+            ? "estimate"
+            : path === "payment-setting"
+              ? "payment"
+              : body.key || "app";
+      const value =
+        typeof body.value === "string"
+          ? body.value
+          : JSON.stringify(body.value ?? body);
+      const row = await E.Customization.upsert({
+        where: { tenantId_key: { tenantId, key } },
+        create: { tenantId, key, value },
+        update: { value },
+      });
+      return res.json(row);
+    }
+
+    // Account delete request
+    if (
+      (path === "account-delete-request" || path === "my-profile/delete") &&
+      method === "POST"
+    ) {
+      await E.Customization.upsert({
+        where: {
+          tenantId_key: { tenantId, key: "account_delete_request" },
+        },
+        create: {
+          tenantId,
+          key: "account_delete_request",
+          value: JSON.stringify({
+            userId: user.id,
+            email: user.email,
+            at: new Date().toISOString(),
+            reason: body.reason || null,
+          }),
+        },
+        update: {
+          value: JSON.stringify({
+            userId: user.id,
+            email: user.email,
+            at: new Date().toISOString(),
+            reason: body.reason || null,
+          }),
+        },
+      });
+      await E.Notification.create({
+        data: {
+          tenantId,
+          userId: user.id,
+          title: "Account deletion requested",
+          body: "Your account deletion request was recorded.",
+        },
+      });
+      return res.json({ ok: true, message: "Deletion request recorded" });
+    }
+
+    // Dashboard extras
+    if (path === "payment-overview" && method === "GET") {
+      const txs = await E.Transaction.findMany({
+        where: { tenantId },
+        select: { amount: true, receivedOn: true },
+      });
+      const byMonth: Record<string, number> = {};
+      for (const t of txs) {
+        const k = t.receivedOn.toISOString().slice(0, 7);
+        byMonth[k] = (byMonth[k] || 0) + t.amount;
+      }
+      return res.json({
+        total: txs.reduce((s, t) => s + t.amount, 0),
+        byMonth,
+      });
+    }
+    if (path === "top-customer-transactions" && method === "GET") {
+      const customers = await E.Customer.findMany({
+        where: { tenantId },
+        include: { transactions: { select: { amount: true } } },
+        take: 50,
+      });
+      const ranked = customers
+        .map((c) => ({
+          customer: c,
+          total: c.transactions.reduce((s, t) => s + t.amount, 0),
+        }))
+        .sort((a, b) => b.total - a.total)
+        .slice(0, 5);
+      return res.json(ranked);
+    }
+    if (path === "income-expense-overview" && method === "GET") {
+      const [invoices, expenses] = await Promise.all([
+        E.Invoice.findMany({
+          where: { tenantId },
+          select: { receivedAmount: true, grandTotal: true },
+        }),
+        E.Expense.findMany({
+          where: { tenantId },
+          select: { amount: true },
+        }),
+      ]);
+      return res.json({
+        income: invoices.reduce((s, i) => s + i.receivedAmount, 0),
+        billed: invoices.reduce((s, i) => s + i.grandTotal, 0),
+        expenses: expenses.reduce((s, e) => s + e.amount, 0),
+      });
+    }
+    if (path === "ticket-overview" && method === "GET") {
+      const tickets = await E.Ticket.findMany({
+        where: { tenantId },
+        select: { status: true },
+      });
+      const byStatus: Record<string, number> = {};
+      for (const t of tickets) {
+        byStatus[t.status] = (byStatus[t.status] || 0) + 1;
+      }
+      return res.json({ total: tickets.length, byStatus });
+    }
+
+    // Selected dropdowns (Flutter parity)
+    if (path === "selected/customers" && method === "GET") {
+      return res.json(
+        await E.Customer.findMany({
+          where: { tenantId, status: "active" },
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+            companyName: true,
+          },
+          orderBy: { firstName: "asc" },
+        }),
+      );
+    }
+    if (path === "selected/products" && method === "GET") {
+      return res.json(
+        await E.Product.findMany({
+          where: { tenantId },
+          orderBy: { name: "asc" },
+        }),
+      );
+    }
+    if (path === "selected/taxes" && method === "GET") {
+      return res.json(await E.Tax.findMany({ where: { tenantId } }));
+    }
+    if (path === "selected/notes" && method === "GET") {
+      const where: any = { tenantId };
+      if (q.type) where.type = String(q.type);
+      return res.json(await E.Note.findMany({ where }));
+    }
+    if (path === "selected/discount-types" && method === "GET") {
+      return res.json([
+        { id: "none", name: "None" },
+        { id: "fixed", name: "Fixed" },
+        { id: "percentage", name: "Percentage" },
+      ]);
+    }
+    if (path === "selected/note-types" && method === "GET") {
+      return res.json([
+        { id: "invoice", name: "Invoice" },
+        { id: "estimate", name: "Estimate" },
+        { id: "payment", name: "Payment" },
+      ]);
+    }
+    if (path === "selected/departments" && method === "GET") {
+      return res.json(await E.Department.findMany({ orderBy: { name: "asc" } }));
+    }
+    if (path === "selected/priorities" && method === "GET") {
+      return res.json(await E.Priority.findMany({ orderBy: { name: "asc" } }));
+    }
+    if (path === "selected/my-plans" && method === "GET") {
       return res.json(
         await E.Plan.findMany({
           where: { status: "active" },
@@ -742,8 +1734,204 @@ export const mobileApi: MobileApi = async (req, res, context) => {
       );
     }
 
-    if (path === "taxes" && method === "GET") {
-      return res.json(await E.Tax.findMany({ where: { tenantId } }));
+    // Expense update + product get one
+    if (path.match(/^expenses\/[^/]+$/) && method === "GET") {
+      const id = path.split("/")[1];
+      const row = await E.Expense.findFirst({
+        where: { id, tenantId },
+        include: { category: true },
+      });
+      if (!row) throw new HttpError(404);
+      return res.json(row);
+    }
+    if (path.match(/^expenses\/[^/]+$/) && method === "PUT") {
+      const id = path.split("/")[1];
+      const existing = await E.Expense.findFirst({ where: { id, tenantId } });
+      if (!existing) throw new HttpError(404);
+      return res.json(
+        await E.Expense.update({
+          where: { id },
+          data: {
+            title: body.title ?? existing.title,
+            amount:
+              body.amount != null ? Number(body.amount) : existing.amount,
+            date: body.date ? new Date(body.date) : existing.date,
+            reference: body.reference ?? existing.reference,
+            note: body.note ?? existing.note,
+            categoryId: body.categoryId ?? existing.categoryId,
+          },
+        }),
+      );
+    }
+    if (path.match(/^products\/[^/]+$/) && method === "GET") {
+      const id = path.split("/")[1];
+      const row = await E.Product.findFirst({ where: { id, tenantId } });
+      if (!row) throw new HttpError(404);
+      return res.json(row);
+    }
+
+    // Estimate detail / status / document
+    if (path.match(/^estimates\/[^/]+$/) && method === "GET") {
+      const id = path.split("/")[1];
+      const est = await E.Estimate.findFirst({
+        where: { id, tenantId },
+        include: {
+          customer: true,
+          details: { include: { product: true } },
+          taxes: true,
+        },
+      });
+      if (!est) throw new HttpError(404);
+      return res.json(est);
+    }
+    if (
+      (path.match(/^estimates\/[^/]+\/status$/) ||
+        path.match(/^estimate-status-change\/[^/]+$/)) &&
+      method === "POST"
+    ) {
+      const id = path.includes("estimate-status")
+        ? path.split("/").pop()!
+        : path.split("/")[1];
+      const est = await E.Estimate.findFirst({ where: { id, tenantId } });
+      if (!est) throw new HttpError(404);
+      return res.json(
+        await E.Estimate.update({
+          where: { id },
+          data: { status: body.status || est.status },
+        }),
+      );
+    }
+    if (path.match(/^estimates\/[^/]+\/document$/) && method === "GET") {
+      const id = path.split("/")[1];
+      const estimate = await E.Estimate.findFirst({
+        where: { id, tenantId },
+        include: {
+          customer: true,
+          details: { include: { product: true } },
+          taxes: { include: { tax: true } },
+          tenant: true,
+        },
+      });
+      if (!estimate) throw new HttpError(404);
+      const html = buildDocumentHtml({
+        fullNumber: estimate.estimateFullNumber,
+        dateLabel: `Date ${estimate.date.toLocaleDateString()}`,
+        status: estimate.status,
+        subTotal: estimate.subTotal,
+        discountAmount: estimate.discountAmount,
+        grandTotal: estimate.grandTotal,
+        note: estimate.note,
+        companyName: estimate.tenant.name,
+        customerName: customerDisplay(estimate.customer),
+        customerEmail: estimate.customer.email,
+        customerAddress: estimate.customer.address,
+        lines: estimate.details.map((d) => ({
+          name: d.product.name,
+          quantity: d.quantity,
+          price: d.price,
+        })),
+        taxes: estimate.taxes.map((t) => ({
+          name: t.tax?.name || "Tax",
+          rate: t.rate,
+          amount: t.amount,
+        })),
+      });
+      const taxAmount = estimate.taxes.reduce((s, t) => s + t.amount, 0);
+      const bytes = await buildPdfBytes({
+        title: "ESTIMATE",
+        fullNumber: estimate.estimateFullNumber,
+        companyName: estimate.tenant.name,
+        customerName: customerDisplay(estimate.customer),
+        customerEmail: estimate.customer.email,
+        customerAddress: estimate.customer.address,
+        dateLabel: estimate.date.toLocaleDateString(),
+        status: estimate.status,
+        subTotal: estimate.subTotal,
+        discountAmount: estimate.discountAmount || 0,
+        taxAmount,
+        grandTotal: estimate.grandTotal,
+        note: estimate.note,
+        lines: estimate.details.map((d) => ({
+          name: d.product.name,
+          quantity: d.quantity,
+          price: d.price,
+        })),
+      });
+      return res.json({
+        html,
+        fullNumber: estimate.estimateFullNumber,
+        pdfBase64: toBase64(bytes),
+        filename: `${estimate.estimateFullNumber}.pdf`,
+      });
+    }
+    if (path.startsWith("estimates/") && method === "DELETE") {
+      const id = path.split("/")[1];
+      const existing = await E.Estimate.findFirst({ where: { id, tenantId } });
+      if (!existing) throw new HttpError(404);
+      await E.Estimate.delete({ where: { id } });
+      return res.json({ ok: true });
+    }
+
+    // Ticket status
+    if (
+      path.match(/^tickets\/[^/]+\/status$/) &&
+      (method === "POST" || method === "PUT")
+    ) {
+      const id = path.split("/")[1];
+      const t = await E.Ticket.findFirst({ where: { id, tenantId } });
+      if (!t) throw new HttpError(404);
+      return res.json(
+        await E.Ticket.update({
+          where: { id },
+          data: { status: body.status || t.status },
+        }),
+      );
+    }
+
+    // Customer sub-resources
+    if (path.match(/^customers\/[^/]+\/invoices$/) && method === "GET") {
+      const customerId = path.split("/")[1];
+      const rows = await E.Invoice.findMany({
+        where: { tenantId, customerId },
+        orderBy: { createdAt: "desc" },
+      });
+      return res.json(rows.map((i) => ({ ...i, dueAmount: dueAmount(i) })));
+    }
+    if (path.match(/^customers\/[^/]+\/estimates$/) && method === "GET") {
+      const customerId = path.split("/")[1];
+      return res.json(
+        await E.Estimate.findMany({
+          where: { tenantId, customerId },
+          orderBy: { createdAt: "desc" },
+        }),
+      );
+    }
+    if (path.match(/^customers\/[^/]+\/transactions$/) && method === "GET") {
+      const customerId = path.split("/")[1];
+      return res.json(
+        await E.Transaction.findMany({
+          where: { tenantId, customerId },
+          orderBy: { receivedOn: "desc" },
+        }),
+      );
+    }
+
+    // Subscription expiry check for mobile gate
+    if (path === "subscription-status" && method === "GET") {
+      const tenant = await E.Tenant.findUnique({ where: { id: tenantId } });
+      const subscriber = await E.Subscriber.findFirst({
+        where: { tenantId },
+        include: { plan: true },
+        orderBy: { createdAt: "desc" },
+      });
+      const expired =
+        tenant?.status === "expired" ||
+        (subscriber?.endDate != null && subscriber.endDate < new Date());
+      return res.json({
+        expired,
+        tenantStatus: tenant?.status,
+        subscriber,
+      });
     }
 
     throw new HttpError(404, `Unknown mobile route: ${method} ${path}`);

@@ -674,6 +674,47 @@ action updateMyProfile {
   fn: import { updateMyProfile } from "@src/paysuite/plans/operations",
   entities: [User]
 }
+
+query getCustomizations {
+  fn: import { getCustomizations } from "@src/paysuite/settings/operations",
+  entities: [User, Tenant, Plan, Subscriber, Customization]
+}
+
+action upsertCustomization {
+  fn: import { upsertCustomization } from "@src/paysuite/settings/operations",
+  entities: [User, Tenant, Plan, Subscriber, Customization]
+}
+
+query getEmailTemplates {
+  fn: import { getEmailTemplates } from "@src/paysuite/settings/operations",
+  entities: [User, Tenant, Plan, Subscriber, Customization]
+}
+
+action upsertEmailTemplate {
+  fn: import { upsertEmailTemplate } from "@src/paysuite/settings/operations",
+  entities: [User, Tenant, Plan, Subscriber, Customization]
+}
+
+action requestAccountDelete {
+  fn: import { requestAccountDelete } from "@src/paysuite/settings/operations",
+  entities: [User, Tenant, Plan, Subscriber, Customization, Notification]
+}
+
+query getLandlordCompanies {
+  fn: import { getLandlordCompanies } from "@src/paysuite/settings/operations",
+  entities: [User, Tenant, Subscriber, Plan]
+}
+
+action updateLandlordCompany {
+  fn: import { updateLandlordCompany } from "@src/paysuite/settings/operations",
+  entities: [User, Tenant]
+}
+
+route LandlordCompaniesRoute { path: "/landlord/companies", to: LandlordCompaniesPage }
+page LandlordCompaniesPage {
+  authRequired: true,
+  component: import LandlordCompaniesPage from "@src/paysuite/settings/LandlordCompaniesPage"
+}
 //#endregion
 
 //#region Demo AI App (template leftover, optional)
@@ -883,7 +924,8 @@ api mobileApi {
   entities: [
     User, Tenant, Plan, Subscriber, Customer, Product, Invoice, Estimate,
     Expense, Ticket, TicketComment, Transaction, PaymentMethod, Category, Department, Priority,
-    InvoiceDetail, InvoiceTax, Tax, EstimateDetail, EstimateTax, RoleUser
+    InvoiceDetail, InvoiceTax, Tax, EstimateDetail, EstimateTax, RoleUser,
+    Note, Notification, Role, UserInvite, Unit, BillingHistory, Customization
   ],
   // Express 5 / path-to-regexp requires a named wildcard (not bare /*)
   httpRoute: (ALL, "/api/mobile/*path")
