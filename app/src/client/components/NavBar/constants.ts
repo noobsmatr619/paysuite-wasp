@@ -17,5 +17,7 @@ export const demoNavigationitems: NavigationItem[] = [
   { name: "Tickets", to: routes.TicketsRoute.to },
   { name: "Reports", to: routes.ReportsRoute.to },
   { name: "Plans", to: routes.PlansRoute.to },
+  { name: "Users", to: routes.UsersRolesRoute.to },
+  { name: "Import", to: routes.ImportExportRoute.to },
   { name: "Settings", to: routes.SettingsRoute.to },
 ] as const;

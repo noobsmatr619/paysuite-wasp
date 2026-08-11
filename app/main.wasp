@@ -180,7 +180,7 @@ query getCustomer {
 
 action createCustomer {
   fn: import { createCustomer } from "@src/paysuite/customers/operations",
-  entities: [User, Tenant, Plan, Subscriber, Customer]
+  entities: [User, Tenant, Plan, Subscriber, Customer, RoleUser]
 }
 
 action updateCustomer {
@@ -225,7 +225,7 @@ query getProduct {
 
 action createProduct {
   fn: import { createProduct } from "@src/paysuite/products/operations",
-  entities: [User, Tenant, Plan, Subscriber, Product]
+  entities: [User, Tenant, Plan, Subscriber, Product, Customer, Invoice, Estimate, RoleUser]
 }
 
 action updateProduct {
@@ -290,7 +290,7 @@ query getInvoice {
 
 action createInvoice {
   fn: import { createInvoice } from "@src/paysuite/invoices/operations",
-  entities: [User, Tenant, Plan, Subscriber, Invoice, InvoiceDetail, InvoiceTax, Customer, Product]
+  entities: [User, Tenant, Plan, Subscriber, Invoice, InvoiceDetail, InvoiceTax, Customer, Product, Estimate, RoleUser]
 }
 
 action updateInvoice {
@@ -381,7 +381,7 @@ query getEstimate {
 
 action createEstimate {
   fn: import { createEstimate } from "@src/paysuite/estimates/operations",
-  entities: [User, Tenant, Plan, Subscriber, Estimate, EstimateDetail, EstimateTax, Customer, Product]
+  entities: [User, Tenant, Plan, Subscriber, Estimate, EstimateDetail, EstimateTax, Customer, Product, Invoice, RoleUser]
 }
 
 action updateEstimate {
@@ -695,15 +695,121 @@ job recurringInvoicesJob {
 }
 //#endregion
 
+
+//#region Users Roles Import Export PDF
+route UsersRolesRoute { path: "/users", to: UsersRolesPage }
+page UsersRolesPage {
+  authRequired: true,
+  component: import UsersRolesPage from "@src/paysuite/roles/UsersRolesPage"
+}
+
+route ImportExportRoute { path: "/import-export", to: ImportExportPage }
+page ImportExportPage {
+  authRequired: true,
+  component: import ImportExportPage from "@src/paysuite/importExport/ImportExportPage"
+}
+
+query getRoles {
+  fn: import { getRoles } from "@src/paysuite/roles/operations",
+  entities: [User, Tenant, Plan, Subscriber, Role, RoleUser]
+}
+
+action createRole {
+  fn: import { createRole } from "@src/paysuite/roles/operations",
+  entities: [User, Tenant, Plan, Subscriber, Role, RoleUser]
+}
+
+action updateRole {
+  fn: import { updateRole } from "@src/paysuite/roles/operations",
+  entities: [User, Tenant, Plan, Subscriber, Role, RoleUser]
+}
+
+action deleteRole {
+  fn: import { deleteRole } from "@src/paysuite/roles/operations",
+  entities: [User, Tenant, Plan, Subscriber, Role, RoleUser]
+}
+
+query getTenantUsers {
+  fn: import { getTenantUsers } from "@src/paysuite/roles/operations",
+  entities: [User, Tenant, Plan, Subscriber, Role, RoleUser]
+}
+
+action inviteTenantUser {
+  fn: import { inviteTenantUser } from "@src/paysuite/roles/operations",
+  entities: [User, Tenant, Plan, Subscriber, Role, RoleUser, UserInvite, Notification]
+}
+
+action assignUserRole {
+  fn: import { assignUserRole } from "@src/paysuite/roles/operations",
+  entities: [User, Tenant, Plan, Subscriber, Role, RoleUser]
+}
+
+query getNotifications {
+  fn: import { getNotifications } from "@src/paysuite/roles/operations",
+  entities: [Notification]
+}
+
+action markNotificationRead {
+  fn: import { markNotificationRead } from "@src/paysuite/roles/operations",
+  entities: [Notification]
+}
+
+action markAllNotificationsRead {
+  fn: import { markAllNotificationsRead } from "@src/paysuite/roles/operations",
+  entities: [Notification]
+}
+
+action activatePlan {
+  fn: import { activatePlan } from "@src/paysuite/roles/operations",
+  entities: [User, Tenant, Plan, Subscriber, BillingHistory, Notification]
+}
+
+query exportCustomersCsv {
+  fn: import { exportCustomersCsv } from "@src/paysuite/importExport/operations",
+  entities: [User, Tenant, Plan, Subscriber, Customer]
+}
+
+query exportProductsCsv {
+  fn: import { exportProductsCsv } from "@src/paysuite/importExport/operations",
+  entities: [User, Tenant, Plan, Subscriber, Product]
+}
+
+query exportInvoicesCsv {
+  fn: import { exportInvoicesCsv } from "@src/paysuite/importExport/operations",
+  entities: [User, Tenant, Plan, Subscriber, Invoice, Customer]
+}
+
+action importCustomersCsv {
+  fn: import { importCustomersCsv } from "@src/paysuite/importExport/operations",
+  entities: [User, Tenant, Plan, Subscriber, Customer, Product, Invoice, Estimate, RoleUser]
+}
+
+action importProductsCsv {
+  fn: import { importProductsCsv } from "@src/paysuite/importExport/operations",
+  entities: [User, Tenant, Plan, Subscriber, Product, Customer, Invoice, Estimate, RoleUser]
+}
+
+query getInvoicePdf {
+  fn: import { getInvoicePdf } from "@src/paysuite/documents/operations",
+  entities: [User, Tenant, Plan, Subscriber, Invoice, Customer, InvoiceDetail, InvoiceTax, Product, Tax]
+}
+
+query getEstimatePdf {
+  fn: import { getEstimatePdf } from "@src/paysuite/documents/operations",
+  entities: [User, Tenant, Plan, Subscriber, Estimate, Customer, EstimateDetail, EstimateTax, Product, Tax]
+}
+//#endregion
+
 //#region Mobile REST API (Expo client)
 api mobileApi {
   fn: import { mobileApi } from "@src/paysuite/mobile/api",
   entities: [
     User, Tenant, Plan, Subscriber, Customer, Product, Invoice, Estimate,
-    Expense, Ticket, Transaction, PaymentMethod, Category, Department, Priority,
-    InvoiceDetail, InvoiceTax, Tax, EstimateDetail, EstimateTax
+    Expense, Ticket, TicketComment, Transaction, PaymentMethod, Category, Department, Priority,
+    InvoiceDetail, InvoiceTax, Tax, EstimateDetail, EstimateTax, RoleUser
   ],
-  httpRoute: (ALL, "/api/mobile/*")
+  // Express 5 / path-to-regexp requires a named wildcard (not bare /*)
+  httpRoute: (ALL, "/api/mobile/*path")
 }
 //#endregion
 

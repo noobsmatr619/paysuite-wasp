@@ -15,6 +15,7 @@ import {
   formatDocNumber,
   dueAmount,
 } from "../shared/tenant";
+import { assertWithinPlanLimit, assertPermission } from "../shared/planLimits";
 import type { EstimateInput } from "../shared/types";
 
 const estimateInclude = {
@@ -69,6 +70,8 @@ export const createEstimate: CreateEstimate<EstimateInput, any> = async (
 ) => {
   if (!context.user) throw new HttpError(401);
   const tenantId = await requireTenantId(context.user, context.entities);
+  await assertPermission(context.entities as any, context.user.id, "estimates.manage");
+  await assertWithinPlanLimit(context.entities as any, tenantId, "estimates");
   if (!args.customerId) throw new HttpError(400, "Customer is required");
   if (!args.lines?.length) throw new HttpError(400, "At least one line item");
 

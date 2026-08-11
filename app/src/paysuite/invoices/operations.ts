@@ -15,6 +15,7 @@ import {
   formatDocNumber,
   dueAmount,
 } from "../shared/tenant";
+import { assertWithinPlanLimit, assertPermission } from "../shared/planLimits";
 import type { InvoiceInput } from "../shared/types";
 
 const invoiceInclude = {
@@ -85,6 +86,8 @@ export const createInvoice: CreateInvoice<InvoiceInput, any> = async (
 ) => {
   if (!context.user) throw new HttpError(401);
   const tenantId = await requireTenantId(context.user, context.entities);
+  await assertPermission(context.entities as any, context.user.id, "invoices.manage");
+  await assertWithinPlanLimit(context.entities as any, tenantId, "invoices");
 
   if (!args.customerId) throw new HttpError(400, "Customer is required");
   if (!args.lines?.length) throw new HttpError(400, "At least one line item");

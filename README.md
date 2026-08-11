@@ -78,14 +78,20 @@ GET  /api/mobile/my-profile
 GET  /api/mobile/my-plan
 ```
 
-## Completed phases
+## Status
 
-1. PDF / print export (`/invoices/:id/print`, `/estimates/:id/print`, mobile document)
-2. Recurring invoices job (`0 2 * * *`)
-3. Mobile JWT (`auth/login`, Settings → Issue mobile token, `MOBILE_JWT_SECRET`)
-4. Landlord dashboard (`/landlord`) with charts + company/billing tables
-5. Stripe collect-on-invoice (`createInvoiceCheckoutSession` + webhook)
-6. Email send invoice/estimate (`sendInvoiceEmail` / `sendEstimateEmail`, Dummy logs in dev)
-7. Tenant reports (`/reports`)
+See **[STATUS.md](./STATUS.md)** for an honest done/left list.  
+`wasp compile` is green; server boots; mobile API responds.
 
-PayPal / Razorpay: register as payment methods and use manual due payment; Stripe is automated checkout.
+### Implemented (core)
+
+- Multi-tenant CRUD, plan limits, RBAC + invites, notifications
+- Real PDF via `pdf-lib` (+ HTML print)
+- CSV import/export
+- Plan activate → Subscriber
+- Mobile REST (`/api/mobile/*path`) with JWT login + CRUD
+- Stripe invoice checkout (needs real keys); PayPal/Razorpay still partial
+
+### Not full original PaySuite
+
+Customer portal, i18n/AR, push, attachments, landlord CMS, password-hash mobile auth, full PSP webhooks, Laravel migration — see STATUS.md.

@@ -8,6 +8,7 @@ import type {
 } from "wasp/server/operations";
 import type { Customer } from "wasp/entities";
 import { requireTenantId } from "../shared/tenant";
+import { assertWithinPlanLimit, assertPermission } from "../shared/planLimits";
 import type { CustomerInput } from "../shared/types";
 
 type ListArgs = { search?: string; status?: string };
@@ -63,6 +64,8 @@ export const createCustomer: CreateCustomer<CustomerInput, Customer> = async (
 ) => {
   if (!context.user) throw new HttpError(401);
   const tenantId = await requireTenantId(context.user, context.entities);
+  await assertPermission(context.entities as any, context.user.id, "customers.manage");
+  await assertWithinPlanLimit(context.entities as any, tenantId, "customers");
 
   if (!args.firstName?.trim()) {
     throw new HttpError(400, "First name is required");

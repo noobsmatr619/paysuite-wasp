@@ -9,6 +9,7 @@ import {
   createInvoiceCheckoutSession,
   createGatewayPaymentIntent,
   sendInvoiceEmail,
+  getInvoicePdf,
 } from "wasp/client/operations";
 import {
   PageShell,
@@ -109,7 +110,35 @@ export default function InvoiceDetailPage() {
       actions={
         <div className="flex flex-wrap gap-2">
           <Button asChild variant="outline">
-            <Link to={`/invoices/${inv.id}/print`}>PDF / Print</Link>
+            <Link to={`/invoices/${inv.id}/print`}>Print HTML</Link>
+          </Button>
+          <Button
+            variant="outline"
+            disabled={busy}
+            onClick={async () => {
+              setBusy(true);
+              setError(null);
+              try {
+                const pdf = await getInvoicePdf({ id: inv.id });
+                const bin = atob(pdf.base64);
+                const bytes = new Uint8Array(bin.length);
+                for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+                const blob = new Blob([bytes], { type: "application/pdf" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = pdf.filename;
+                a.click();
+                URL.revokeObjectURL(url);
+                setMessage("PDF downloaded");
+              } catch (e: any) {
+                setError(e?.message || "PDF failed");
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            Download PDF
           </Button>
           <Button variant="outline" disabled={busy} onClick={emailInvoice}>
             Email customer

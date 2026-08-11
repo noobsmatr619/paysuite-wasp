@@ -12,6 +12,7 @@ import type {
 } from "wasp/server/operations";
 import type { Product, Category, Unit } from "wasp/entities";
 import { requireTenantId } from "../shared/tenant";
+import { assertWithinPlanLimit, assertPermission } from "../shared/planLimits";
 import type { ProductInput } from "../shared/types";
 
 export const getProducts: GetProducts<
@@ -59,6 +60,8 @@ export const createProduct: CreateProduct<ProductInput, Product> = async (
 ) => {
   if (!context.user) throw new HttpError(401);
   const tenantId = await requireTenantId(context.user, context.entities);
+  await assertPermission(context.entities as any, context.user.id, "products.manage");
+  await assertWithinPlanLimit(context.entities as any, tenantId, "products");
   if (!args.name?.trim()) throw new HttpError(400, "Name is required");
   if (args.price == null || args.price < 0) {
     throw new HttpError(400, "Valid price is required");

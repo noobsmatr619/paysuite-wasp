@@ -38,10 +38,16 @@ export default function TicketsPage() {
 
   async function onCreate(e: React.FormEvent) {
     e.preventDefault();
+    const departmentId = form.departmentId || departments?.[0]?.id;
+    const priorityId = form.priorityId || priorities?.[0]?.id;
+    if (!departmentId || !priorityId) {
+      alert("Wait for departments/priorities to load (or seed them).");
+      return;
+    }
     await createTicket({
       subject: form.subject,
-      departmentId: form.departmentId || departments?.[0]?.id,
-      priorityId: form.priorityId || priorities?.[0]?.id,
+      departmentId,
+      priorityId,
       body: form.body || null,
     });
     setShow(false);

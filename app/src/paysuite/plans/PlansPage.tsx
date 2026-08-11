@@ -5,15 +5,19 @@ import {
   ensureDefaultPlans,
   getMyPlan,
   getBillings,
+  activatePlan,
 } from "wasp/client/operations";
 import { PageShell, money, DataTable, StatusBadge } from "../shared/ui";
 import { Button } from "../../client/components/ui/button";
 import { Link } from "react-router";
+import { useState } from "react";
 
 export default function PlansPage() {
   const { data: plans, refetch } = useQuery(getPlans);
   const { data: myPlan, refetch: refetchMy } = useQuery(getMyPlan);
-  const { data: billings } = useQuery(getBillings);
+  const { data: billings, refetch: refetchBillings } = useQuery(getBillings);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
     if (!plans?.length) {
@@ -46,6 +50,13 @@ export default function PlansPage() {
         </div>
       )}
 
+      {msg && (
+        <div className="mb-4 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm">
+          {msg}
+        </div>
+      )}
+      {err && <p className="mb-4 text-sm text-rose-600">{err}</p>}
+
       <div className="mb-8 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         {(plans || []).map((p: any) => (
           <div key={p.id} className="bg-card rounded-xl border p-4">
@@ -62,6 +73,23 @@ export default function PlansPage() {
               <li>{p.numberOfInvoices} invoices</li>
               <li>{p.numberOfEstimates} estimates</li>
             </ul>
+            <Button
+              className="mt-4 w-full"
+              size="sm"
+              onClick={async () => {
+                setErr(null);
+                try {
+                  await activatePlan({ planId: p.id });
+                  setMsg(`Activated ${p.name}`);
+                  refetchMy();
+                  refetchBillings();
+                } catch (e: any) {
+                  setErr(e?.message || "Activation failed");
+                }
+              }}
+            >
+              Activate
+            </Button>
           </div>
         ))}
       </div>
