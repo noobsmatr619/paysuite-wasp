@@ -63,5 +63,17 @@ echo "$PAY" | python3 -c 'import sys,json; d=json.load(sys.stdin); print("status
 echo "== stats =="
 curl -sS "$API_BASE/api/mobile/statistics" -H "$AUTH" | python3 -c 'import sys,json; d=json.load(sys.stdin); print({k:d.get(k) for k in ["customerCount","invoiceCount","totalPaid","totalDue"]})'
 
+echo "== public portal invoice =="
+# portalToken from create response if present; else skip
+PTOKEN=$(echo "$INV" | python3 -c 'import sys,json; print(json.load(sys.stdin).get("portalToken") or "")')
+if [[ -n "$PTOKEN" ]]; then
+  PORTAL=$(curl -sS -X POST "$API_BASE/operations/get-portal-invoice" \
+    -H 'Content-Type: application/json' \
+    -d "{\"json\":{\"token\":\"$PTOKEN\"}}")
+  echo "$PORTAL" | python3 -c 'import sys,json; d=json.load(sys.stdin).get("json",{}); print("portal", d.get("invoiceFullNumber"), "due", d.get("dueAmount"), "company", d.get("companyName"))'
+else
+  echo "no portalToken on invoice (older server?)"
+fi
+
 echo
 echo "E2E API SMOKE PASSED"

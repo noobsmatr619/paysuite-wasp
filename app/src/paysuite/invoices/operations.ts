@@ -9,6 +9,7 @@ import type {
   RecordInvoicePayment,
 } from "wasp/server/operations";
 import type { Invoice } from "wasp/entities";
+import crypto from "crypto";
 import {
   requireTenantId,
   computeLineTotals,
@@ -17,6 +18,10 @@ import {
 } from "../shared/tenant";
 import { assertWithinPlanLimit, assertPermission } from "../shared/planLimits";
 import type { InvoiceInput } from "../shared/types";
+
+function newPortalToken() {
+  return crypto.randomBytes(24).toString("hex");
+}
 
 const invoiceInclude = {
   customer: true,
@@ -132,6 +137,7 @@ export const createInvoice: CreateInvoice<InvoiceInput, any> = async (
       receivedAmount: 0,
       note: args.note ?? null,
       invoiceTemplate: args.invoiceTemplate ?? 1,
+      portalToken: newPortalToken(),
       details: {
         create: args.lines.map((l) => ({
           productId: l.productId,
@@ -152,6 +158,31 @@ export const createInvoice: CreateInvoice<InvoiceInput, any> = async (
 
   return { ...invoice, dueAmount: dueAmount(invoice) };
 };
+
+/** Ensure invoice has a portal token; returns public path. */
+export async function ensureInvoicePortalLink(
+  args: { id: string },
+  context: any,
+): Promise<{ token: string; path: string }> {
+  if (!context.user) throw new HttpError(401);
+  const tenantId = await requireTenantId(context.user, context.entities);
+  const inv = await context.entities.Invoice.findFirst({
+    where: { id: args.id, tenantId },
+  });
+  if (!inv) throw new HttpError(404, "Invoice not found");
+  let token = inv.portalToken;
+  if (!token) {
+    token = newPortalToken();
+    await context.entities.Invoice.update({
+      where: { id: inv.id },
+      data: { portalToken: token },
+    });
+  }
+  return {
+    token: token!,
+    path: `/portal/invoice/${token}`,
+  };
+}
 
 export const updateInvoice: UpdateInvoice<
   InvoiceInput & { id: string },
@@ -288,6 +319,7 @@ export const cloneInvoice: CloneInvoice<{ id: string }, any> = async (
       receivedAmount: 0,
       note: source.note,
       invoiceTemplate: source.invoiceTemplate,
+      portalToken: newPortalToken(),
       details: {
         create: source.details.map((d) => ({
           productId: d.productId,

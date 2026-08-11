@@ -26,12 +26,15 @@ export default function App() {
     ? marketingNavigationItems
     : demoNavigationitems;
 
+  const isPortal = location.pathname.startsWith("/portal");
+
   const shouldDisplayAppNavBar = useMemo(() => {
     return (
+      !isPortal &&
       location.pathname !== routes.LoginRoute.build() &&
       location.pathname !== routes.SignupRoute.build()
     );
-  }, [location]);
+  }, [location, isPortal]);
 
   const isAdminDashboard = useMemo(() => {
     return location.pathname.startsWith("/admin");
@@ -50,7 +53,7 @@ export default function App() {
   return (
     <>
       <div className="bg-background text-foreground min-h-screen">
-        {isAdminDashboard ? (
+        {isAdminDashboard || isPortal ? (
           <Outlet />
         ) : (
           <>
@@ -64,7 +67,7 @@ export default function App() {
         )}
       </div>
       <Toaster position="bottom-right" />
-      <CookieConsentBanner />
+      {!isPortal && <CookieConsentBanner />}
     </>
   );
 }

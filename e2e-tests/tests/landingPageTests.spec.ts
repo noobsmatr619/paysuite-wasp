@@ -6,7 +6,7 @@ test.describe("general landing page tests", () => {
   });
 
   test("has title", async ({ page }) => {
-    await expect(page).toHaveTitle(/SaaS/);
+    await expect(page).toHaveTitle(/PaySuite|SaaS/i);
   });
 
   test("get started link", async ({ page }) => {

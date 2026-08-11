@@ -5,6 +5,7 @@ import { resolveBearerToken, signMobileToken } from "./jwt";
 import { verifyEmailPassword } from "./verifyCredentials";
 import { buildDocumentHtml, customerDisplay } from "../documents/pdfHtml";
 import { buildPdfBytes, toBase64 } from "../documents/realPdf";
+import crypto from "crypto";
 import {
   computeLineTotals,
   formatDocNumber,
@@ -333,6 +334,7 @@ export const mobileApi: MobileApi = async (req, res, context) => {
           receivedAmount: 0,
           note: body.note || null,
           invoiceTemplate: 1,
+          portalToken: crypto.randomBytes(24).toString("hex"),
           details: {
             create: lines.map((l: any) => ({
               productId: l.productId,

@@ -1,56 +1,54 @@
 # PaySuite Wasp — honest status
 
-## Verified (this session)
+## Verified this session
 
 | Check | Result |
 |-------|--------|
-| `wasp compile` | ✅ green |
-| DB migrate | ✅ including Attachment |
-| Server boot | ✅ `PORT=3011` |
-| Web signup | ✅ `POST /auth/email/signup` |
-| Mobile login (real password hash) | ✅ Argon2 via Wasp `verifyPassword` |
-| E2E API smoke | ✅ `scripts/e2e-paysuite-api.sh` **PASSED** |
+| `wasp compile` | ✅ |
+| Customer portal (public query) | ✅ `get-portal-invoice` returns invoice without login |
+| Portal token on invoice create | ✅ |
+| API e2e + portal step | ✅ **PASSED** |
+| Real password mobile login | ✅ |
 
-E2E path proved:
+E2E:
 
-`login → create customer → product → invoice → PDF base64 → pay → stats`
+`login → customer → product → invoice → PDF → pay → stats → public portal`
 
-Use header: **`X-PaySuite-Token: <jwt>`** (not `Authorization: Bearer` — Wasp session layer intercepts that).
+## Delivered next-slice features
 
-## Done this round
+1. **Customer portal**
+   - `Invoice.portalToken`
+   - Public page `/portal/invoice/:token`
+   - `getPortalInvoice` / `createPortalCheckout`
+   - Staff: **Copy portal link** on invoice detail
 
-1. **Real mobile password auth** (`verifyCredentials.ts` + Wasp AuthIdentity)
-2. **Invoice + estimate edit pages** (`/invoices/:id/edit`, `/estimates/:id/edit`)
-3. **Attachments** (DB base64, UI on invoice/ticket/expense)
-4. **E2E script** `scripts/e2e-paysuite-api.sh`
-5. **Demo AI app** redirects to `/dashboard`
+2. **OpenSaaS noise reduced**
+   - Demo AI → dashboard redirect
+   - File upload page → settings
+   - Admin calendar/UI demo pages → `/admin`
+   - Portal routes hide main app chrome
 
-## Still not original-product 100%
+3. **Playwright**
+   - `e2e-tests/tests/paysuiteAppTests.spec.ts` (signup → dashboard → customers)
+   - Landing title accepts PaySuite
+   - `PLAYWRIGHT_BASE_URL` defaults to client `:3000` (not server)
 
-- EN/AR i18n, OTP, social login, Firebase push  
-- Customer portal / public payment page  
-- PayPal/Razorpay full capture webhooks  
-- Landlord CMS (landing sections admin)  
-- S3 media (attachments are local DB only, size capped)  
-- Playwright browser e2e for full UI  
-- OpenSaaS code still present (file-upload/S3, payment processors unused) but demo route neutralized  
+## Still open (not claiming done)
+
+- Playwright needs a running client + email verification flow may flake with Dummy provider
+- Portal “Pay online” needs real Stripe keys (placeholder returns message)
+- i18n/push/social, landlord CMS, S3 media, full PayPal/Razorpay webhooks
 
 ## Run
 
 ```bash
 docker start paysuite-wasp-postgres
-cd paysuite_wasp/app
-PORT=3011 wasp start
+cd paysuite_wasp/app && PORT=3011 wasp start
 
-# after signup at http://localhost:3000 (or next free port)
-EMAIL=you@x.com PASS=YourPassword \
-API_BASE=http://127.0.0.1:3011 \
+EMAIL=you@x.com PASS=secret API_BASE=http://127.0.0.1:3011 \
   ../scripts/e2e-paysuite-api.sh
-```
 
-Mobile:
-
-```bash
-EXPO_PUBLIC_API_URL=http://HOST:3011 npm start
-# same email/password as web signup
+# UI e2e (client must be up)
+cd e2e-tests
+PLAYWRIGHT_BASE_URL=http://127.0.0.1:3000 npx playwright test tests/paysuiteAppTests.spec.ts
 ```

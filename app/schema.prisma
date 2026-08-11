@@ -312,6 +312,8 @@ model Invoice {
   receivedAmount    Float    @default(0)
   note              String?
   invoiceTemplate   Int      @default(1)
+  // Public customer portal access token (unguessable)
+  portalToken       String?  @unique
 
   details           InvoiceDetail[]
   taxes             InvoiceTax[]

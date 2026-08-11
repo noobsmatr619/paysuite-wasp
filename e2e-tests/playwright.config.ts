@@ -19,7 +19,8 @@ export default defineConfig({
   use: {
     /* Base URL to use in actions like `await page.goto('/')`. */
     // Prefer env so we never hardcode :3000 (Wasp client often uses 3000; set explicitly).
-    baseURL: process.env.PLAYWRIGHT_BASE_URL || "http://127.0.0.1:3001",
+    // Client UI port (Vite). Server API is separate (often 3011).
+    baseURL: process.env.PLAYWRIGHT_BASE_URL || "http://127.0.0.1:3000",
 
     /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
     trace: "on-first-retry",
@@ -39,11 +40,13 @@ export default defineConfig({
    * causing errors when trying to run `wasp start` afterwards. To avoid this, we let Playwright run web server only in CI (where this is not a problem because after tests we don't do anything else).
    * For local development, where this does pose a nuisance, we start the app / web server manually with `wasp db start` and `wasp start` and then start tests with `npm run local:e2e:start`.
    */
-  webServer: {
-    command: "run-wasp-app dev --path-to-app=../app --wasp-cli-cmd=wasp",
-    // Wait for the backend to start
-    url: "http://localhost:3001",
-    reuseExistingServer: !process.env.CI,
-    timeout: 120 * 1000,
-  },
+  // Prefer an already-running `wasp start` (reuseExistingServer).
+  webServer: process.env.CI
+    ? {
+        command: "cd ../app && wasp start",
+        url: process.env.PLAYWRIGHT_BASE_URL || "http://127.0.0.1:3000",
+        reuseExistingServer: false,
+        timeout: 180 * 1000,
+      }
+    : undefined,
 });

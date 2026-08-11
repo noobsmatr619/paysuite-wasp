@@ -63,6 +63,23 @@ app PaySuite {
   },
 }
 
+//#region Customer portal (public)
+route PortalInvoiceRoute { path: "/portal/invoice/:token", to: PortalInvoicePage }
+page PortalInvoicePage {
+  component: import PortalInvoicePage from "@src/paysuite/portal/PortalInvoicePage"
+}
+
+query getPortalInvoice {
+  fn: import { getPortalInvoice } from "@src/paysuite/portal/operations",
+  entities: [Invoice, Customer, Tenant, InvoiceDetail, Product, InvoiceTax, Tax, Transaction]
+}
+
+action createPortalCheckout {
+  fn: import { createPortalCheckout } from "@src/paysuite/portal/operations",
+  entities: [Invoice, Customer, Tenant]
+}
+//#endregion
+
 //#region Marketing
 route LandingPageRoute { path: "/", to: LandingPage }
 page LandingPage {
@@ -317,6 +334,11 @@ action cloneInvoice {
 action recordInvoicePayment {
   fn: import { recordInvoicePayment } from "@src/paysuite/invoices/operations",
   entities: [User, Tenant, Plan, Subscriber, Invoice, Transaction, PaymentMethod]
+}
+
+action ensureInvoicePortalLink {
+  fn: import { ensureInvoicePortalLink } from "@src/paysuite/invoices/operations",
+  entities: [User, Tenant, Plan, Subscriber, Invoice]
 }
 
 action createInvoiceCheckoutSession {

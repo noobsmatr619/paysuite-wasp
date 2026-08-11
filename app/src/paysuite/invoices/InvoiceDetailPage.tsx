@@ -10,6 +10,7 @@ import {
   createGatewayPaymentIntent,
   sendInvoiceEmail,
   getInvoicePdf,
+  ensureInvoicePortalLink,
 } from "wasp/client/operations";
 import {
   PageShell,
@@ -112,6 +113,26 @@ export default function InvoiceDetailPage() {
         <div className="flex flex-wrap gap-2">
           <Button asChild variant="outline">
             <Link to={`/invoices/${inv.id}/edit`}>Edit</Link>
+          </Button>
+          <Button
+            variant="outline"
+            disabled={busy}
+            onClick={async () => {
+              setBusy(true);
+              setError(null);
+              try {
+                const link = await ensureInvoicePortalLink({ id: inv.id });
+                const url = `${window.location.origin}${link.path}`;
+                await navigator.clipboard.writeText(url);
+                setMessage(`Customer portal link copied: ${url}`);
+              } catch (e: any) {
+                setError(e?.message || "Could not create portal link");
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            Copy portal link
           </Button>
           <Button asChild variant="outline">
             <Link to={`/invoices/${inv.id}/print`}>Print HTML</Link>
