@@ -1,0 +1,737 @@
+app PaySuite {
+  wasp: {
+    version: "^0.22.0"
+  },
+
+  title: "PaySuite",
+
+  head: [
+    "<link rel='icon' href='/favicon.ico' />",
+    "<meta name='description' content='PaySuite — multi-tenant invoicing, estimates, expenses, and subscription billing.' />",
+    "<meta name='author' content='PaySuite' />",
+    "<meta name='keywords' content='paysuite, invoicing, billing, estimates, saas, payments' />",
+    "<meta property='og:type' content='website' />",
+    "<meta property='og:title' content='PaySuite' />",
+    "<meta property='og:site_name' content='PaySuite' />",
+    "<meta property='og:description' content='Multi-tenant invoicing and payment suite for growing businesses.' />",
+  ],
+
+  auth: {
+    userEntity: User,
+    methods: {
+      email: {
+        fromField: {
+          name: "PaySuite",
+          email: "noreply@paysuite.app"
+        },
+        emailVerification: {
+          clientRoute: EmailVerificationRoute,
+          getEmailContentFn: import { getVerificationEmailContent } from "@src/auth/email-and-pass/emails",
+        },
+        passwordReset: {
+          clientRoute: PasswordResetRoute,
+          getEmailContentFn: import { getPasswordResetEmailContent } from "@src/auth/email-and-pass/emails",
+        },
+        userSignupFields: import { getEmailUserFields } from "@src/auth/userSignupFields",
+      },
+    },
+    onAuthFailedRedirectTo: "/login",
+    onAuthSucceededRedirectTo: "/dashboard",
+  },
+
+  db: {
+    seeds: [
+      import { seedMockUsers } from "@src/server/scripts/dbSeeds",
+      import { seedPaySuiteDefaults } from "@src/server/scripts/dbSeeds",
+    ]
+  },
+
+  client: {
+    rootComponent: import App from "@src/client/App",
+  },
+
+  server: {
+    envValidationSchema: import { serverEnvValidationSchema } from "@src/env",
+  },
+
+  emailSender: {
+    provider: Dummy,
+    defaultFrom: {
+      name: "PaySuite",
+      email: "noreply@paysuite.app"
+    },
+  },
+}
+
+//#region Marketing
+route LandingPageRoute { path: "/", to: LandingPage }
+page LandingPage {
+  component: import LandingPage from "@src/landing-page/LandingPage"
+}
+
+route PricingPageRoute { path: "/pricing", to: PricingPage }
+page PricingPage {
+  component: import PricingPage from "@src/payment/PricingPage"
+}
+//#endregion
+
+//#region Auth
+route LoginRoute { path: "/login", to: LoginPage }
+page LoginPage {
+  component: import Login from "@src/auth/LoginPage"
+}
+
+route SignupRoute { path: "/signup", to: SignupPage }
+page SignupPage {
+  component: import { Signup } from "@src/auth/SignupPage"
+}
+
+route RequestPasswordResetRoute { path: "/request-password-reset", to: RequestPasswordResetPage }
+page RequestPasswordResetPage {
+  component: import { RequestPasswordResetPage } from "@src/auth/email-and-pass/RequestPasswordResetPage",
+}
+
+route PasswordResetRoute { path: "/password-reset", to: PasswordResetPage }
+page PasswordResetPage {
+  component: import { PasswordResetPage } from "@src/auth/email-and-pass/PasswordResetPage",
+}
+
+route EmailVerificationRoute { path: "/email-verification", to: EmailVerificationPage }
+page EmailVerificationPage {
+  component: import { EmailVerificationPage } from "@src/auth/email-and-pass/EmailVerificationPage",
+}
+//#endregion
+
+//#region User account
+route AccountRoute { path: "/account", to: AccountPage }
+page AccountPage {
+  authRequired: true,
+  component: import Account from "@src/user/AccountPage"
+}
+
+query getPaginatedUsers {
+  fn: import { getPaginatedUsers } from "@src/user/operations",
+  entities: [User]
+}
+
+action updateIsUserAdminById {
+  fn: import { updateIsUserAdminById } from "@src/user/operations",
+  entities: [User]
+}
+//#endregion
+
+//#region PaySuite Dashboard
+route DashboardRoute { path: "/dashboard", to: DashboardPage }
+page DashboardPage {
+  authRequired: true,
+  component: import DashboardPage from "@src/paysuite/dashboard/DashboardPage"
+}
+
+query getDashboardStats {
+  fn: import { getDashboardStats } from "@src/paysuite/dashboard/operations",
+  entities: [User, Tenant, Plan, Subscriber, Customer, Product, Invoice, Estimate, Expense, Ticket, Transaction]
+}
+
+query getPaymentOverview {
+  fn: import { getPaymentOverview } from "@src/paysuite/dashboard/operations",
+  entities: [User, Tenant, Plan, Subscriber, Transaction, Customer, PaymentMethod, Invoice]
+}
+
+query getIncomeExpenseOverview {
+  fn: import { getIncomeExpenseOverview } from "@src/paysuite/dashboard/operations",
+  entities: [User, Tenant, Plan, Subscriber, Transaction, Expense]
+}
+//#endregion
+
+//#region Customers
+route CustomersRoute { path: "/customers", to: CustomersPage }
+page CustomersPage {
+  authRequired: true,
+  component: import CustomersPage from "@src/paysuite/customers/CustomersPage"
+}
+
+route CustomerNewRoute { path: "/customers/new", to: CustomerFormPage }
+page CustomerFormPage {
+  authRequired: true,
+  component: import CustomerFormPage from "@src/paysuite/customers/CustomerFormPage"
+}
+
+route CustomerEditRoute { path: "/customers/:id/edit", to: CustomerEditPage }
+page CustomerEditPage {
+  authRequired: true,
+  component: import CustomerFormPage from "@src/paysuite/customers/CustomerFormPage"
+}
+
+route CustomerDetailRoute { path: "/customers/:id", to: CustomerDetailPage }
+page CustomerDetailPage {
+  authRequired: true,
+  component: import CustomerDetailPage from "@src/paysuite/customers/CustomerDetailPage"
+}
+
+query getCustomers {
+  fn: import { getCustomers } from "@src/paysuite/customers/operations",
+  entities: [User, Tenant, Plan, Subscriber, Customer]
+}
+
+query getCustomer {
+  fn: import { getCustomer } from "@src/paysuite/customers/operations",
+  entities: [User, Tenant, Plan, Subscriber, Customer, Invoice, Estimate, Transaction]
+}
+
+action createCustomer {
+  fn: import { createCustomer } from "@src/paysuite/customers/operations",
+  entities: [User, Tenant, Plan, Subscriber, Customer]
+}
+
+action updateCustomer {
+  fn: import { updateCustomer } from "@src/paysuite/customers/operations",
+  entities: [User, Tenant, Plan, Subscriber, Customer]
+}
+
+action deleteCustomer {
+  fn: import { deleteCustomer } from "@src/paysuite/customers/operations",
+  entities: [User, Tenant, Plan, Subscriber, Customer]
+}
+//#endregion
+
+//#region Products
+route ProductsRoute { path: "/products", to: ProductsPage }
+page ProductsPage {
+  authRequired: true,
+  component: import ProductsPage from "@src/paysuite/products/ProductsPage"
+}
+
+route ProductNewRoute { path: "/products/new", to: ProductFormPage }
+page ProductFormPage {
+  authRequired: true,
+  component: import ProductFormPage from "@src/paysuite/products/ProductFormPage"
+}
+
+route ProductEditRoute { path: "/products/:id/edit", to: ProductEditPage }
+page ProductEditPage {
+  authRequired: true,
+  component: import ProductFormPage from "@src/paysuite/products/ProductFormPage"
+}
+
+query getProducts {
+  fn: import { getProducts } from "@src/paysuite/products/operations",
+  entities: [User, Tenant, Plan, Subscriber, Product, Category, Unit]
+}
+
+query getProduct {
+  fn: import { getProduct } from "@src/paysuite/products/operations",
+  entities: [User, Tenant, Plan, Subscriber, Product, Category, Unit]
+}
+
+action createProduct {
+  fn: import { createProduct } from "@src/paysuite/products/operations",
+  entities: [User, Tenant, Plan, Subscriber, Product]
+}
+
+action updateProduct {
+  fn: import { updateProduct } from "@src/paysuite/products/operations",
+  entities: [User, Tenant, Plan, Subscriber, Product]
+}
+
+action deleteProduct {
+  fn: import { deleteProduct } from "@src/paysuite/products/operations",
+  entities: [User, Tenant, Plan, Subscriber, Product]
+}
+
+query getCategories {
+  fn: import { getCategories } from "@src/paysuite/products/operations",
+  entities: [User, Tenant, Plan, Subscriber, Category]
+}
+
+action createCategory {
+  fn: import { createCategory } from "@src/paysuite/products/operations",
+  entities: [User, Tenant, Plan, Subscriber, Category]
+}
+
+query getUnits {
+  fn: import { getUnits } from "@src/paysuite/products/operations",
+  entities: [User, Tenant, Plan, Subscriber, Unit]
+}
+
+action createUnit {
+  fn: import { createUnit } from "@src/paysuite/products/operations",
+  entities: [User, Tenant, Plan, Subscriber, Unit]
+}
+//#endregion
+
+//#region Invoices
+route InvoicesRoute { path: "/invoices", to: InvoicesPage }
+page InvoicesPage {
+  authRequired: true,
+  component: import InvoicesPage from "@src/paysuite/invoices/InvoicesPage"
+}
+
+route InvoiceNewRoute { path: "/invoices/new", to: InvoiceFormPage }
+page InvoiceFormPage {
+  authRequired: true,
+  component: import InvoiceFormPage from "@src/paysuite/invoices/InvoiceFormPage"
+}
+
+route InvoiceDetailRoute { path: "/invoices/:id", to: InvoiceDetailPage }
+page InvoiceDetailPage {
+  authRequired: true,
+  component: import InvoiceDetailPage from "@src/paysuite/invoices/InvoiceDetailPage"
+}
+
+query getInvoices {
+  fn: import { getInvoices } from "@src/paysuite/invoices/operations",
+  entities: [User, Tenant, Plan, Subscriber, Invoice, Customer]
+}
+
+query getInvoice {
+  fn: import { getInvoice } from "@src/paysuite/invoices/operations",
+  entities: [User, Tenant, Plan, Subscriber, Invoice, Customer, InvoiceDetail, InvoiceTax, Product, Tax, Transaction]
+}
+
+action createInvoice {
+  fn: import { createInvoice } from "@src/paysuite/invoices/operations",
+  entities: [User, Tenant, Plan, Subscriber, Invoice, InvoiceDetail, InvoiceTax, Customer, Product]
+}
+
+action updateInvoice {
+  fn: import { updateInvoice } from "@src/paysuite/invoices/operations",
+  entities: [User, Tenant, Plan, Subscriber, Invoice, InvoiceDetail, InvoiceTax, Customer, Product]
+}
+
+action deleteInvoice {
+  fn: import { deleteInvoice } from "@src/paysuite/invoices/operations",
+  entities: [User, Tenant, Plan, Subscriber, Invoice]
+}
+
+action cloneInvoice {
+  fn: import { cloneInvoice } from "@src/paysuite/invoices/operations",
+  entities: [User, Tenant, Plan, Subscriber, Invoice, InvoiceDetail, InvoiceTax]
+}
+
+action recordInvoicePayment {
+  fn: import { recordInvoicePayment } from "@src/paysuite/invoices/operations",
+  entities: [User, Tenant, Plan, Subscriber, Invoice, Transaction, PaymentMethod]
+}
+//#endregion
+
+//#region Estimates
+route EstimatesRoute { path: "/estimates", to: EstimatesPage }
+page EstimatesPage {
+  authRequired: true,
+  component: import EstimatesPage from "@src/paysuite/estimates/EstimatesPage"
+}
+
+route EstimateNewRoute { path: "/estimates/new", to: EstimateFormPage }
+page EstimateFormPage {
+  authRequired: true,
+  component: import EstimateFormPage from "@src/paysuite/estimates/EstimateFormPage"
+}
+
+route EstimateDetailRoute { path: "/estimates/:id", to: EstimateDetailPage }
+page EstimateDetailPage {
+  authRequired: true,
+  component: import EstimateDetailPage from "@src/paysuite/estimates/EstimateDetailPage"
+}
+
+query getEstimates {
+  fn: import { getEstimates } from "@src/paysuite/estimates/operations",
+  entities: [User, Tenant, Plan, Subscriber, Estimate, Customer]
+}
+
+query getEstimate {
+  fn: import { getEstimate } from "@src/paysuite/estimates/operations",
+  entities: [User, Tenant, Plan, Subscriber, Estimate, Customer, EstimateDetail, EstimateTax, Product, Tax]
+}
+
+action createEstimate {
+  fn: import { createEstimate } from "@src/paysuite/estimates/operations",
+  entities: [User, Tenant, Plan, Subscriber, Estimate, EstimateDetail, EstimateTax, Customer, Product]
+}
+
+action updateEstimate {
+  fn: import { updateEstimate } from "@src/paysuite/estimates/operations",
+  entities: [User, Tenant, Plan, Subscriber, Estimate, EstimateDetail, EstimateTax, Customer, Product]
+}
+
+action deleteEstimate {
+  fn: import { deleteEstimate } from "@src/paysuite/estimates/operations",
+  entities: [User, Tenant, Plan, Subscriber, Estimate]
+}
+
+action changeEstimateStatus {
+  fn: import { changeEstimateStatus } from "@src/paysuite/estimates/operations",
+  entities: [User, Tenant, Plan, Subscriber, Estimate]
+}
+
+action convertEstimateToInvoice {
+  fn: import { convertEstimateToInvoice } from "@src/paysuite/estimates/operations",
+  entities: [User, Tenant, Plan, Subscriber, Estimate, EstimateDetail, EstimateTax, Invoice, InvoiceDetail, InvoiceTax]
+}
+//#endregion
+
+//#region Expenses
+route ExpensesRoute { path: "/expenses", to: ExpensesPage }
+page ExpensesPage {
+  authRequired: true,
+  component: import ExpensesPage from "@src/paysuite/expenses/ExpensesPage"
+}
+
+query getExpenses {
+  fn: import { getExpenses } from "@src/paysuite/expenses/operations",
+  entities: [User, Tenant, Plan, Subscriber, Expense, Category]
+}
+
+query getExpense {
+  fn: import { getExpense } from "@src/paysuite/expenses/operations",
+  entities: [User, Tenant, Plan, Subscriber, Expense, Category]
+}
+
+action createExpense {
+  fn: import { createExpense } from "@src/paysuite/expenses/operations",
+  entities: [User, Tenant, Plan, Subscriber, Expense, Category]
+}
+
+action updateExpense {
+  fn: import { updateExpense } from "@src/paysuite/expenses/operations",
+  entities: [User, Tenant, Plan, Subscriber, Expense]
+}
+
+action deleteExpense {
+  fn: import { deleteExpense } from "@src/paysuite/expenses/operations",
+  entities: [User, Tenant, Plan, Subscriber, Expense]
+}
+//#endregion
+
+//#region Transactions / payment methods
+route TransactionsRoute { path: "/transactions", to: TransactionsPage }
+page TransactionsPage {
+  authRequired: true,
+  component: import TransactionsPage from "@src/paysuite/transactions/TransactionsPage"
+}
+
+query getTransactions {
+  fn: import { getTransactions } from "@src/paysuite/transactions/operations",
+  entities: [User, Tenant, Plan, Subscriber, Transaction, Customer, Invoice, PaymentMethod]
+}
+
+query getPaymentMethods {
+  fn: import { getPaymentMethods } from "@src/paysuite/transactions/operations",
+  entities: [User, Tenant, Plan, Subscriber, PaymentMethod]
+}
+
+action createPaymentMethod {
+  fn: import { createPaymentMethod } from "@src/paysuite/transactions/operations",
+  entities: [User, Tenant, Plan, Subscriber, PaymentMethod]
+}
+
+action deletePaymentMethod {
+  fn: import { deletePaymentMethod } from "@src/paysuite/transactions/operations",
+  entities: [User, Tenant, Plan, Subscriber, PaymentMethod]
+}
+//#endregion
+
+//#region Tickets
+route TicketsRoute { path: "/tickets", to: TicketsPage }
+page TicketsPage {
+  authRequired: true,
+  component: import TicketsPage from "@src/paysuite/tickets/TicketsPage"
+}
+
+route TicketDetailRoute { path: "/tickets/:id", to: TicketDetailPage }
+page TicketDetailPage {
+  authRequired: true,
+  component: import TicketDetailPage from "@src/paysuite/tickets/TicketDetailPage"
+}
+
+query getTickets {
+  fn: import { getTickets } from "@src/paysuite/tickets/operations",
+  entities: [User, Tenant, Plan, Subscriber, Ticket, Department, Priority]
+}
+
+query getTicket {
+  fn: import { getTicket } from "@src/paysuite/tickets/operations",
+  entities: [User, Tenant, Plan, Subscriber, Ticket, TicketComment, Department, Priority]
+}
+
+action createTicket {
+  fn: import { createTicket } from "@src/paysuite/tickets/operations",
+  entities: [User, Tenant, Plan, Subscriber, Ticket]
+}
+
+action updateTicketStatus {
+  fn: import { updateTicketStatus } from "@src/paysuite/tickets/operations",
+  entities: [User, Tenant, Plan, Subscriber, Ticket]
+}
+
+action addTicketComment {
+  fn: import { addTicketComment } from "@src/paysuite/tickets/operations",
+  entities: [User, Tenant, Plan, Subscriber, Ticket, TicketComment]
+}
+
+action rateTicket {
+  fn: import { rateTicket } from "@src/paysuite/tickets/operations",
+  entities: [User, Tenant, Plan, Subscriber, Ticket]
+}
+
+query getDepartments {
+  fn: import { getDepartments } from "@src/paysuite/tickets/operations",
+  entities: [Department]
+}
+
+query getPriorities {
+  fn: import { getPriorities } from "@src/paysuite/tickets/operations",
+  entities: [Priority]
+}
+
+action ensureSupportLookups {
+  fn: import { ensureSupportLookups } from "@src/paysuite/tickets/operations",
+  entities: [User, Department, Priority]
+}
+//#endregion
+
+//#region Taxes & notes
+query getTaxes {
+  fn: import { getTaxes } from "@src/paysuite/taxes/operations",
+  entities: [User, Tenant, Plan, Subscriber, Tax]
+}
+
+action createTax {
+  fn: import { createTax } from "@src/paysuite/taxes/operations",
+  entities: [User, Tenant, Plan, Subscriber, Tax]
+}
+
+action updateTax {
+  fn: import { updateTax } from "@src/paysuite/taxes/operations",
+  entities: [User, Tenant, Plan, Subscriber, Tax]
+}
+
+action deleteTax {
+  fn: import { deleteTax } from "@src/paysuite/taxes/operations",
+  entities: [User, Tenant, Plan, Subscriber, Tax]
+}
+
+query getNotes {
+  fn: import { getNotes } from "@src/paysuite/taxes/operations",
+  entities: [User, Tenant, Plan, Subscriber, Note]
+}
+
+action createNote {
+  fn: import { createNote } from "@src/paysuite/taxes/operations",
+  entities: [User, Tenant, Plan, Subscriber, Note]
+}
+
+action updateNote {
+  fn: import { updateNote } from "@src/paysuite/taxes/operations",
+  entities: [User, Tenant, Plan, Subscriber, Note]
+}
+
+action deleteNote {
+  fn: import { deleteNote } from "@src/paysuite/taxes/operations",
+  entities: [User, Tenant, Plan, Subscriber, Note]
+}
+//#endregion
+
+//#region Plans & settings
+route PlansRoute { path: "/plans", to: PlansPage }
+page PlansPage {
+  authRequired: true,
+  component: import PlansPage from "@src/paysuite/plans/PlansPage"
+}
+
+route SettingsRoute { path: "/settings", to: SettingsPage }
+page SettingsPage {
+  authRequired: true,
+  component: import SettingsPage from "@src/paysuite/settings/SettingsPage"
+}
+
+query getPlans {
+  fn: import { getPlans } from "@src/paysuite/plans/operations",
+  entities: [Plan]
+}
+
+action ensureDefaultPlans {
+  fn: import { ensureDefaultPlans } from "@src/paysuite/plans/operations",
+  entities: [Plan]
+}
+
+query getMyPlan {
+  fn: import { getMyPlan } from "@src/paysuite/plans/operations",
+  entities: [User, Tenant, Plan, Subscriber, Product, Customer, Estimate, Invoice]
+}
+
+query getBillings {
+  fn: import { getBillings } from "@src/paysuite/plans/operations",
+  entities: [User, Tenant, Plan, Subscriber, BillingHistory, PaymentMethod]
+}
+
+action updateMyProfile {
+  fn: import { updateMyProfile } from "@src/paysuite/plans/operations",
+  entities: [User]
+}
+//#endregion
+
+//#region Demo AI App (template leftover, optional)
+route DemoAppRoute { path: "/demo-app", to: DemoAppPage }
+page DemoAppPage {
+  authRequired: true,
+  component: import DemoAppPage from "@src/demo-ai-app/DemoAppPage"
+}
+
+action generateGptResponse {
+  fn: import { generateGptResponse } from "@src/demo-ai-app/operations",
+  entities: [User, Task, GptResponse]
+}
+
+action createTask {
+  fn: import { createTask } from "@src/demo-ai-app/operations",
+  entities: [Task]
+}
+
+action deleteTask {
+  fn: import { deleteTask } from "@src/demo-ai-app/operations",
+  entities: [Task]
+}
+
+action updateTask {
+  fn: import { updateTask } from "@src/demo-ai-app/operations",
+  entities: [Task]
+}
+
+query getGptResponses {
+  fn: import { getGptResponses } from "@src/demo-ai-app/operations",
+  entities: [User, GptResponse]
+}
+
+query getAllTasksByUser {
+  fn: import { getAllTasksByUser } from "@src/demo-ai-app/operations",
+  entities: [Task]
+}
+//#endregion
+
+//#region Mobile REST API (Expo client)
+api mobileApi {
+  fn: import { mobileApi } from "@src/paysuite/mobile/api",
+  entities: [
+    User, Tenant, Plan, Subscriber, Customer, Product, Invoice, Estimate,
+    Expense, Ticket, Transaction, PaymentMethod, Category, Department, Priority
+  ],
+  httpRoute: (ALL, "/api/mobile/*")
+}
+//#endregion
+
+//#region Payment (SaaS subscription checkout)
+route CheckoutResultRoute { path: "/checkout", to: CheckoutResultPage }
+page CheckoutResultPage {
+  authRequired: true,
+  component: import CheckoutResultPage from "@src/payment/CheckoutResultPage"
+}
+
+query getCustomerPortalUrl {
+  fn: import { getCustomerPortalUrl } from  "@src/payment/operations",
+  entities: [User]
+}
+
+action generateCheckoutSession {
+  fn: import { generateCheckoutSession } from "@src/payment/operations",
+  entities: [User]
+}
+
+api paymentsWebhook {
+  fn: import { paymentsWebhook } from "@src/payment/webhook",
+  entities: [User],
+  middlewareConfigFn: import { paymentsMiddlewareConfigFn } from "@src/payment/webhook",
+  httpRoute: (POST, "/payments-webhook")
+}
+//#endregion
+
+//#region File Upload
+route FileUploadRoute { path: "/file-upload", to: FileUploadPage }
+page FileUploadPage {
+  authRequired: true,
+  component: import FileUpload from "@src/file-upload/FileUploadPage"
+}
+
+action createFileUploadUrl {
+  fn: import { createFileUploadUrl } from "@src/file-upload/operations",
+  entities: [User, File]
+}
+
+action addFileToDb {
+  fn: import { addFileToDb } from "@src/file-upload/operations",
+  entities: [User, File]
+}
+
+query getAllFilesByUser {
+  fn: import { getAllFilesByUser } from "@src/file-upload/operations",
+  entities: [User, File]
+}
+
+query getDownloadFileSignedURL {
+  fn: import { getDownloadFileSignedURL } from "@src/file-upload/operations",
+  entities: [User, File]
+}
+
+action deleteFile {
+  fn: import { deleteFile } from "@src/file-upload/operations",
+  entities: [User, File]
+}
+//#endregion
+
+//#region Analytics + Admin
+query getDailyStats {
+  fn: import { getDailyStats } from "@src/analytics/operations",
+  entities: [User, DailyStats]
+}
+
+job dailyStatsJob {
+  executor: PgBoss,
+  perform: {
+    fn: import { calculateDailyStats } from "@src/analytics/stats"
+  },
+  schedule: {
+    cron: "0 * * * *"
+  },
+  entities: [User, DailyStats, Logs, PageViewSource]
+}
+
+route AdminRoute { path: "/admin", to: AnalyticsDashboardPage }
+page AnalyticsDashboardPage {
+  authRequired: true,
+  component: import AnalyticsDashboardPage from "@src/admin/dashboards/analytics/AnalyticsDashboardPage"
+}
+
+route AdminUsersRoute { path: "/admin/users", to: AdminUsersPage }
+page AdminUsersPage {
+  authRequired: true,
+  component: import AdminUsers from "@src/admin/dashboards/users/UsersDashboardPage"
+}
+
+route AdminSettingsRoute { path: "/admin/settings", to: AdminSettingsPage }
+page AdminSettingsPage {
+  authRequired: true,
+  component: import AdminSettings from "@src/admin/elements/settings/SettingsPage"
+}
+
+route AdminCalendarRoute { path: "/admin/calendar", to: AdminCalendarPage }
+page AdminCalendarPage {
+  authRequired: true,
+  component: import AdminCalendar from "@src/admin/elements/calendar/CalendarPage"
+}
+
+route AdminUIButtonsRoute { path: "/admin/ui/buttons", to: AdminUIButtonsPage }
+page AdminUIButtonsPage {
+  authRequired: true,
+  component: import AdminUI from "@src/admin/elements/ui-elements/ButtonsPage"
+}
+
+route AdminMessagesRoute { path: "/admin/messages", to: AdminMessagesPage }
+page AdminMessagesPage {
+  authRequired: true,
+  component: import AdminMessages from "@src/admin/dashboards/messages/MessagesPage"
+}
+
+route NotFoundRoute { path: "*", to: NotFoundPage }
+page NotFoundPage {
+  component: import { NotFoundPage } from "@src/client/components/NotFoundPage"
+}
+//#endregion

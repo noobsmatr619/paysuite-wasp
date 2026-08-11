@@ -1,0 +1,584 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// ─── Auth / Platform User (Wasp auth entity) ────────────────────────────────
+model User {
+  id                            String    @id @default(uuid())
+  createdAt                     DateTime  @default(now())
+
+  email                         String?   @unique
+  username                      String?   @unique
+  isAdmin                       Boolean   @default(false)
+
+  // Profile (from Laravel User + UserProfile)
+  firstName                     String?
+  lastName                      String?
+  phoneCountry                  String?
+  phoneNumber                   String?
+  gender                        String?
+  address                       String?
+  companyName                   String?
+  taxNo                         String?
+  profilePicture                String?
+  status                        String    @default("active") // active | inactive | invited
+
+  // Multi-tenant membership
+  tenantId                      String?
+  tenant                        Tenant?   @relation(fields: [tenantId], references: [id])
+  isSubscriber                  Boolean   @default(false)
+
+  // SaaS billing (OpenSaaS / Stripe plan subscription for the company)
+  paymentProcessorUserId        String?   @unique
+  lemonSqueezyCustomerPortalUrl String?
+  subscriptionStatus            String?
+  subscriptionPlan              String?
+  datePaid                      DateTime?
+  credits                       Int       @default(3)
+
+  // Relations
+  gptResponses                  GptResponse[]
+  contactFormMessages           ContactFormMessage[]
+  tasks                         Task[]
+  files                         File[]
+  createdInvoices               Invoice[]          @relation("InvoiceCreatedBy")
+  createdEstimates              Estimate[]         @relation("EstimateCreatedBy")
+  createdTickets                Ticket[]           @relation("TicketCreatedBy")
+  assignedTickets               Ticket[]           @relation("TicketAssignedTo")
+  ticketComments                TicketComment[]
+  receivedTransactions          Transaction[]      @relation("TransactionReceivedBy")
+  subscribers                   Subscriber[]
+  billingHistories              BillingHistory[]   @relation("BillingPaidBy")
+}
+
+// ─── Multi-tenant company ───────────────────────────────────────────────────
+model Tenant {
+  id              String   @id @default(uuid())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  slug            String   @unique
+  name            String
+  status          String   @default("active") // active | expired | suspended
+  isDeleted       Boolean  @default(false)
+
+  users           User[]
+  customers       Customer[]
+  products        Product[]
+  categories      Category[]
+  units           Unit[]
+  paymentMethods  PaymentMethod[]
+  taxes           Tax[]
+  notes           Note[]
+  invoices        Invoice[]
+  estimates       Estimate[]
+  expenses        Expense[]
+  transactions    Transaction[]
+  tickets         Ticket[]
+  subscribers     Subscriber[]
+  billingHistories BillingHistory[]
+  customizations  Customization[]
+}
+
+// ─── Customer (tenant client, not auth user) ────────────────────────────────
+model Customer {
+  id              String   @id @default(uuid())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  tenantId        String
+  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  firstName       String
+  lastName        String?
+  email           String?
+  phoneCountry    String?
+  phoneNumber     String?
+  taxNo           String?
+  companyName     String?
+  address         String?
+  status          String   @default("active") // active | inactive
+  portalAccess    Boolean  @default(false)
+  avatarUrl       String?
+
+  invoices        Invoice[]
+  estimates       Estimate[]
+  transactions    Transaction[]
+
+  @@index([tenantId])
+  @@index([tenantId, email])
+}
+
+// ─── Catalog ────────────────────────────────────────────────────────────────
+model Category {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name      String
+  type      String   // category | expense | income
+
+  products  Product[]
+  expenses  Expense[]
+
+  @@index([tenantId, type])
+}
+
+model Unit {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name      String
+  shortName String
+
+  products  Product[]
+
+  @@index([tenantId])
+}
+
+model Product {
+  id          String   @id @default(uuid())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name        String
+  price       Float
+  code        String?
+  description String?
+  categoryId  String?
+  category    Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  unitId      String?
+  unit        Unit?     @relation(fields: [unitId], references: [id], onDelete: SetNull)
+
+  invoiceDetails  InvoiceDetail[]
+  estimateDetails EstimateDetail[]
+
+  @@index([tenantId])
+}
+
+// ─── Tax / Notes / Payment methods ──────────────────────────────────────────
+model Tax {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name      String
+  rate      Float
+
+  invoiceTaxes   InvoiceTax[]
+  estimateTaxes  EstimateTax[]
+
+  @@index([tenantId])
+}
+
+model Note {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  type      String   // invoice | payment | estimate
+  name      String
+  note      String
+
+  @@index([tenantId, type])
+}
+
+model PaymentMethod {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenantId  String?
+  tenant    Tenant?  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name      String
+  type      String   // cash | bank | stripe | paypal | razorpay | other
+
+  transactions     Transaction[]
+  billingHistories BillingHistory[]
+
+  @@index([tenantId])
+}
+
+// ─── Invoices ───────────────────────────────────────────────────────────────
+model Invoice {
+  id                String   @id @default(uuid())
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  tenantId          String
+  tenant            Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customerId        String
+  customer          Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  createdById       String
+  createdBy         User     @relation("InvoiceCreatedBy", fields: [createdById], references: [id])
+
+  issueDate         DateTime
+  dueDate           DateTime
+  invoiceNumber     Int
+  invoiceFullNumber String
+  referenceNumber   String?
+  recurring         Boolean  @default(false)
+  status            String   @default("due") // paid | due | partially_paid
+  subTotal          Float
+  discountType      String   @default("none") // none | fixed | percentage
+  discountAmount    Float?
+  totalAmount       Float
+  grandTotal        Float
+  receivedAmount    Float    @default(0)
+  note              String?
+  invoiceTemplate   Int      @default(1)
+
+  details           InvoiceDetail[]
+  taxes             InvoiceTax[]
+  transactions      Transaction[]
+
+  @@index([tenantId])
+  @@index([tenantId, customerId])
+  @@index([tenantId, status])
+}
+
+model InvoiceDetail {
+  id         String  @id @default(uuid())
+  invoiceId  String
+  invoice    Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  productId  String
+  product    Product @relation(fields: [productId], references: [id])
+  quantity   Float
+  price      Float
+
+  @@index([invoiceId])
+}
+
+model InvoiceTax {
+  id         String  @id @default(uuid())
+  invoiceId  String
+  invoice    Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  taxId      String
+  tax        Tax     @relation(fields: [taxId], references: [id])
+  rate       Float
+  amount     Float
+
+  @@index([invoiceId])
+}
+
+// ─── Estimates ──────────────────────────────────────────────────────────────
+model Estimate {
+  id                String   @id @default(uuid())
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  tenantId          String
+  tenant            Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customerId        String
+  customer          Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  createdById       String
+  createdBy         User     @relation("EstimateCreatedBy", fields: [createdById], references: [id])
+
+  date              DateTime
+  estimateNumber    Int
+  estimateFullNumber String
+  status            String   @default("pending") // pending | approved | rejected
+  subTotal          Float
+  discountType      String   @default("none")
+  discountAmount    Float?
+  totalAmount       Float
+  grandTotal        Float
+  note              String?
+  estimateTemplate  Int      @default(1)
+
+  details           EstimateDetail[]
+  taxes             EstimateTax[]
+
+  @@index([tenantId])
+  @@index([tenantId, customerId])
+}
+
+model EstimateDetail {
+  id          String   @id @default(uuid())
+  estimateId  String
+  estimate    Estimate @relation(fields: [estimateId], references: [id], onDelete: Cascade)
+  productId   String
+  product     Product  @relation(fields: [productId], references: [id])
+  quantity    Float
+  price       Float
+
+  @@index([estimateId])
+}
+
+model EstimateTax {
+  id          String   @id @default(uuid())
+  estimateId  String
+  estimate    Estimate @relation(fields: [estimateId], references: [id], onDelete: Cascade)
+  taxId       String
+  tax         Tax      @relation(fields: [taxId], references: [id])
+  rate        Float
+  amount      Float
+
+  @@index([estimateId])
+}
+
+// ─── Expenses / Transactions ────────────────────────────────────────────────
+model Expense {
+  id          String   @id @default(uuid())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  title       String
+  date        DateTime
+  reference   String?
+  amount      Float
+  categoryId  String
+  category    Category @relation(fields: [categoryId], references: [id])
+  note        String?
+
+  @@index([tenantId])
+  @@index([tenantId, categoryId])
+}
+
+model Transaction {
+  id                String   @id @default(uuid())
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  tenantId          String
+  tenant            Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  invoiceId         String?
+  invoice           Invoice? @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+  customerId        String?
+  customer          Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  paymentMethodId   String?
+  paymentMethod     PaymentMethod? @relation(fields: [paymentMethodId], references: [id], onDelete: SetNull)
+  receivedById      String?
+  receivedBy        User?    @relation("TransactionReceivedBy", fields: [receivedById], references: [id])
+
+  invoiceNumber     Int?
+  invoiceFullNumber String?
+  receivedOn        DateTime @default(now())
+  amount            Float
+  note              String?
+  token             String?
+
+  @@index([tenantId])
+  @@index([tenantId, customerId])
+}
+
+// ─── Support tickets ────────────────────────────────────────────────────────
+model Department {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  name      String
+  tickets   Ticket[]
+}
+
+model Priority {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  name      String
+  tickets   Ticket[]
+}
+
+model Ticket {
+  id            String   @id @default(uuid())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  tenantId      String
+  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  subject       String
+  departmentId  String
+  department    Department @relation(fields: [departmentId], references: [id])
+  priorityId    String
+  priority      Priority   @relation(fields: [priorityId], references: [id])
+  createdById   String
+  createdBy     User     @relation("TicketCreatedBy", fields: [createdById], references: [id])
+  assignedToId  String?
+  assignedTo    User?    @relation("TicketAssignedTo", fields: [assignedToId], references: [id])
+  status        String   @default("pending") // pending | open | solved | rejected
+  rating        Int?
+  body          String?
+
+  comments      TicketComment[]
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+}
+
+model TicketComment {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  ticketId  String
+  ticket    Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  comment   String
+  userType  String   @default("tenant") // app | tenant
+
+  @@index([ticketId])
+}
+
+// ─── SaaS plans / billing (landlord subscription) ───────────────────────────
+model Plan {
+  id                  String   @id @default(uuid())
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  name                String
+  tag                 String?
+  frequency           String   // monthly | yearly
+  price               Float    @default(0)
+  isFree              Boolean  @default(false)
+  trialDays           Int?
+  isDefault           Boolean  @default(false)
+  numberOfProducts    Int      @default(50)
+  numberOfCustomers   Int      @default(50)
+  numberOfEstimates   Int      @default(100)
+  numberOfInvoices    Int      @default(100)
+  status              String   @default("active") // active | inactive
+
+  subscribers         Subscriber[]
+  billingHistories    BillingHistory[]
+}
+
+model Subscriber {
+  id            String   @id @default(uuid())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  planId        String
+  plan          Plan     @relation(fields: [planId], references: [id])
+  tenantId      String
+  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  startDate     DateTime
+  endDate       DateTime?
+
+  billingHistories BillingHistory[]
+
+  @@index([tenantId])
+  @@index([userId])
+}
+
+model BillingHistory {
+  id              String   @id @default(uuid())
+  createdAt       DateTime @default(now())
+
+  invoiceNumber   String
+  paidById        String?
+  paidBy          User?    @relation("BillingPaidBy", fields: [paidById], references: [id])
+  subscriberId    String
+  subscriber      Subscriber @relation(fields: [subscriberId], references: [id], onDelete: Cascade)
+  planId          String
+  plan            Plan     @relation(fields: [planId], references: [id])
+  tenantId        String
+  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  paymentMethodId String?
+  paymentMethod   PaymentMethod? @relation(fields: [paymentMethodId], references: [id])
+  status          String   // due | paid | cancelled
+  amount          Float
+  transactionId   String?
+
+  @@index([tenantId])
+}
+
+model Customization {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  key       String   // invoice | estimate | payment | app
+  value     String   // JSON string
+
+  @@unique([tenantId, key])
+}
+
+// ─── OpenSaaS template models (kept for compatibility) ──────────────────────
+model GptResponse {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id])
+  userId    String
+  content   String
+}
+
+model Task {
+  id          String   @id @default(uuid())
+  createdAt   DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id])
+  userId      String
+  description String
+  time        String   @default("1")
+  isDone      Boolean  @default(false)
+}
+
+model File {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
+  userId    String
+  name      String
+  type      String
+  s3Key     String
+}
+
+model DailyStats {
+  id                        Int      @id @default(autoincrement())
+  date                      DateTime @default(now()) @unique
+  totalViews                Int      @default(0)
+  prevDayViewsChangePercent String   @default("0")
+  userCount                 Int      @default(0)
+  paidUserCount             Int      @default(0)
+  userDelta                 Int      @default(0)
+  paidUserDelta             Int      @default(0)
+  totalRevenue              Float    @default(0)
+  totalProfit               Float    @default(0)
+  sources                   PageViewSource[]
+}
+
+model PageViewSource {
+  @@id([date, name])
+  name         String
+  date         DateTime @default(now())
+  dailyStats   DailyStats? @relation(fields: [dailyStatsId], references: [id])
+  dailyStatsId Int?
+  visitors     Int
+}
+
+model Logs {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+  message   String
+  level     String
+}
+
+model ContactFormMessage {
+  id        String    @id @default(uuid())
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id])
+  userId    String
+  content   String
+  isRead    Boolean   @default(false)
+  repliedAt DateTime?
+}
