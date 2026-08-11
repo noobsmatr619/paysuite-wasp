@@ -608,6 +608,41 @@ query getAllTasksByUser {
 }
 //#endregion
 
+//#region Reports
+route ReportsRoute { path: "/reports", to: ReportsPage }
+page ReportsPage {
+  authRequired: true,
+  component: import ReportsPage from "@src/paysuite/reports/ReportsPage"
+}
+
+route LandlordReportsRoute { path: "/landlord", to: LandlordReportsPage }
+page LandlordReportsPage {
+  authRequired: true,
+  component: import LandlordReportsPage from "@src/paysuite/reports/LandlordReportsPage"
+}
+
+query getTenantReports {
+  fn: import { getTenantReports } from "@src/paysuite/reports/operations",
+  entities: [User, Tenant, Plan, Subscriber, Transaction, Expense, Invoice]
+}
+
+query getLandlordReports {
+  fn: import { getLandlordReports } from "@src/paysuite/reports/operations",
+  entities: [User, Tenant, Plan, Subscriber, Ticket, BillingHistory, Department, Priority]
+}
+
+job recurringInvoicesJob {
+  executor: PgBoss,
+  perform: {
+    fn: import { recurringInvoicesJob } from "@src/paysuite/invoices/recurring"
+  },
+  schedule: {
+    cron: "0 2 * * *"
+  },
+  entities: [Invoice, InvoiceDetail, InvoiceTax]
+}
+//#endregion
+
 //#region Mobile REST API (Expo client)
 api mobileApi {
   fn: import { mobileApi } from "@src/paysuite/mobile/api",

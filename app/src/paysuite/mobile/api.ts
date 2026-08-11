@@ -131,6 +131,20 @@ export const mobileApi: MobileApi = async (req, res, context) => {
       return res.json(rows);
     }
 
+    if (method === "POST" && path === "products") {
+      const body = req.body || {};
+      const created = await context.entities.Product.create({
+        data: {
+          tenantId,
+          name: body.name || "Product",
+          price: Number(body.price) || 0,
+          code: body.code || null,
+          description: body.description || null,
+        },
+      });
+      return res.status(201).json(created);
+    }
+
     if (method === "GET" && path === "estimates") {
       const rows = await context.entities.Estimate.findMany({
         where: { tenantId },
