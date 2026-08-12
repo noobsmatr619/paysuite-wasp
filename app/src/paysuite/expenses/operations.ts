@@ -1,3 +1,4 @@
+import { assertPermission } from "../shared/planLimits";
 import { HttpError } from "wasp/server";
 import type {
   GetExpenses,
@@ -53,6 +54,7 @@ export const createExpense: CreateExpense<ExpenseInput, Expense> = async (
   context,
 ) => {
   if (!context.user) throw new HttpError(401);
+  await assertPermission(context.entities as any, context.user!.id, "expenses.manage");
   const tenantId = await requireTenantId(context.user, context.entities);
   if (!args.title?.trim()) throw new HttpError(400, "Title is required");
   if (!args.categoryId) throw new HttpError(400, "Category is required");
@@ -78,6 +80,7 @@ export const updateExpense: UpdateExpense<
   Expense
 > = async (args, context) => {
   if (!context.user) throw new HttpError(401);
+  await assertPermission(context.entities as any, context.user!.id, "expenses.manage");
   const tenantId = await requireTenantId(context.user, context.entities);
   const existing = await context.entities.Expense.findFirst({
     where: { id: args.id, tenantId },
@@ -102,6 +105,7 @@ export const deleteExpense: DeleteExpense<{ id: string }, Expense> = async (
   context,
 ) => {
   if (!context.user) throw new HttpError(401);
+  await assertPermission(context.entities as any, context.user!.id, "expenses.manage");
   const tenantId = await requireTenantId(context.user, context.entities);
   const existing = await context.entities.Expense.findFirst({
     where: { id: args.id, tenantId },

@@ -191,6 +191,7 @@ export const updateInvoice: UpdateInvoice<
   any
 > = async (args, context) => {
   if (!context.user) throw new HttpError(401);
+  await assertPermission(context.entities as any, context.user!.id, "invoices.manage");
   const tenantId = await requireTenantId(context.user, context.entities);
 
   const existing = await context.entities.Invoice.findFirst({
@@ -285,6 +286,7 @@ export const deleteInvoice: DeleteInvoice<{ id: string }, Invoice> = async (
   context,
 ) => {
   if (!context.user) throw new HttpError(401);
+  await assertPermission(context.entities as any, context.user!.id, "invoices.manage");
   const tenantId = await requireTenantId(context.user, context.entities);
   const existing = await context.entities.Invoice.findFirst({
     where: { id: args.id, tenantId },
@@ -298,6 +300,7 @@ export const cloneInvoice: CloneInvoice<{ id: string }, any> = async (
   context,
 ) => {
   if (!context.user) throw new HttpError(401);
+  await assertPermission(context.entities as any, context.user!.id, "invoices.manage");
   const tenantId = await requireTenantId(context.user, context.entities);
   const source = await context.entities.Invoice.findFirst({
     where: { id: args.id, tenantId },
@@ -363,6 +366,7 @@ export const recordInvoicePayment: RecordInvoicePayment<
   any
 > = async (args, context) => {
   if (!context.user) throw new HttpError(401);
+  await assertPermission(context.entities as any, context.user!.id, "invoices.manage");
   const tenantId = await requireTenantId(context.user, context.entities);
 
   const invoice = await context.entities.Invoice.findFirst({

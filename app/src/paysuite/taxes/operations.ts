@@ -1,3 +1,4 @@
+import { assertPermission } from "../shared/planLimits";
 import { HttpError } from "wasp/server";
 import type {
   GetTaxes,
@@ -24,6 +25,7 @@ export const getTaxes: GetTaxes<void, Tax[]> = async (_args, context) => {
 export const createTax: CreateTax<{ name: string; rate: number }, Tax> =
   async (args, context) => {
     if (!context.user) throw new HttpError(401);
+  await assertPermission(context.entities as any, context.user!.id, "settings.manage");
     const tenantId = await requireTenantId(context.user, context.entities);
     if (!args.name?.trim()) throw new HttpError(400, "Name is required");
     return context.entities.Tax.create({
@@ -40,6 +42,7 @@ export const updateTax: UpdateTax<
   Tax
 > = async (args, context) => {
   if (!context.user) throw new HttpError(401);
+  await assertPermission(context.entities as any, context.user!.id, "settings.manage");
   const tenantId = await requireTenantId(context.user, context.entities);
   const existing = await context.entities.Tax.findFirst({
     where: { id: args.id, tenantId },
@@ -56,6 +59,7 @@ export const deleteTax: DeleteTax<{ id: string }, Tax> = async (
   context,
 ) => {
   if (!context.user) throw new HttpError(401);
+  await assertPermission(context.entities as any, context.user!.id, "settings.manage");
   const tenantId = await requireTenantId(context.user, context.entities);
   const existing = await context.entities.Tax.findFirst({
     where: { id: args.id, tenantId },

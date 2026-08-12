@@ -1,3 +1,4 @@
+import { assertPermission } from "../shared/planLimits";
 import { HttpError } from "wasp/server";
 import type {
   GetTransactions,
@@ -47,6 +48,7 @@ export const createPaymentMethod: CreatePaymentMethod<
   PaymentMethod
 > = async (args, context) => {
   if (!context.user) throw new HttpError(401);
+  await assertPermission(context.entities as any, context.user!.id, "transactions.manage");
   const tenantId = await requireTenantId(context.user, context.entities);
   if (!args.name?.trim()) throw new HttpError(400, "Name is required");
   return context.entities.PaymentMethod.create({
@@ -63,6 +65,7 @@ export const deletePaymentMethod: DeletePaymentMethod<
   PaymentMethod
 > = async (args, context) => {
   if (!context.user) throw new HttpError(401);
+  await assertPermission(context.entities as any, context.user!.id, "transactions.manage");
   const tenantId = await requireTenantId(context.user, context.entities);
   const existing = await context.entities.PaymentMethod.findFirst({
     where: { id: args.id, tenantId },

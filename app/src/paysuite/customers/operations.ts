@@ -93,6 +93,7 @@ export const updateCustomer: UpdateCustomer<
   Customer
 > = async (args, context) => {
   if (!context.user) throw new HttpError(401);
+  await assertPermission(context.entities as any, context.user!.id, "customers.manage");
   const tenantId = await requireTenantId(context.user, context.entities);
 
   const existing = await context.entities.Customer.findFirst({
@@ -122,6 +123,7 @@ export const deleteCustomer: DeleteCustomer<{ id: string }, Customer> = async (
   context,
 ) => {
   if (!context.user) throw new HttpError(401);
+  await assertPermission(context.entities as any, context.user!.id, "customers.manage");
   const tenantId = await requireTenantId(context.user, context.entities);
 
   const existing = await context.entities.Customer.findFirst({

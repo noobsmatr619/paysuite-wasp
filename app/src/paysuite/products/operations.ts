@@ -85,6 +85,7 @@ export const updateProduct: UpdateProduct<
   Product
 > = async (args, context) => {
   if (!context.user) throw new HttpError(401);
+  await assertPermission(context.entities as any, context.user!.id, "products.manage");
   const tenantId = await requireTenantId(context.user, context.entities);
   const existing = await context.entities.Product.findFirst({
     where: { id: args.id, tenantId },
@@ -109,6 +110,7 @@ export const deleteProduct: DeleteProduct<{ id: string }, Product> = async (
   context,
 ) => {
   if (!context.user) throw new HttpError(401);
+  await assertPermission(context.entities as any, context.user!.id, "products.manage");
   const tenantId = await requireTenantId(context.user, context.entities);
   const existing = await context.entities.Product.findFirst({
     where: { id: args.id, tenantId },
@@ -137,6 +139,7 @@ export const createCategory: CreateCategory<
   Category
 > = async (args, context) => {
   if (!context.user) throw new HttpError(401);
+  await assertPermission(context.entities as any, context.user!.id, "products.manage");
   const tenantId = await requireTenantId(context.user, context.entities);
   if (!args.name?.trim()) throw new HttpError(400, "Name is required");
   return context.entities.Category.create({
@@ -162,6 +165,7 @@ export const createUnit: CreateUnit<
   Unit
 > = async (args, context) => {
   if (!context.user) throw new HttpError(401);
+  await assertPermission(context.entities as any, context.user!.id, "products.manage");
   const tenantId = await requireTenantId(context.user, context.entities);
   return context.entities.Unit.create({
     data: {

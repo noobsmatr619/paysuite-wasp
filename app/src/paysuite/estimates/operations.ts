@@ -152,6 +152,7 @@ export const updateEstimate: UpdateEstimate<
   any
 > = async (args, context) => {
   if (!context.user) throw new HttpError(401);
+  await assertPermission(context.entities as any, context.user!.id, "estimates.manage");
   const tenantId = await requireTenantId(context.user, context.entities);
   const existing = await context.entities.Estimate.findFirst({
     where: { id: args.id, tenantId },
@@ -214,6 +215,7 @@ export const deleteEstimate: DeleteEstimate<{ id: string }, Estimate> = async (
   context,
 ) => {
   if (!context.user) throw new HttpError(401);
+  await assertPermission(context.entities as any, context.user!.id, "estimates.manage");
   const tenantId = await requireTenantId(context.user, context.entities);
   const existing = await context.entities.Estimate.findFirst({
     where: { id: args.id, tenantId },
@@ -227,6 +229,7 @@ export const changeEstimateStatus: ChangeEstimateStatus<
   Estimate
 > = async (args, context) => {
   if (!context.user) throw new HttpError(401);
+  await assertPermission(context.entities as any, context.user!.id, "estimates.manage");
   const tenantId = await requireTenantId(context.user, context.entities);
   const existing = await context.entities.Estimate.findFirst({
     where: { id: args.id, tenantId },
@@ -246,6 +249,7 @@ export const convertEstimateToInvoice: ConvertEstimateToInvoice<
   any
 > = async (args, context) => {
   if (!context.user) throw new HttpError(401);
+  await assertPermission(context.entities as any, context.user!.id, "estimates.manage");
   const tenantId = await requireTenantId(context.user, context.entities);
   const estimate = await context.entities.Estimate.findFirst({
     where: { id: args.id, tenantId },
