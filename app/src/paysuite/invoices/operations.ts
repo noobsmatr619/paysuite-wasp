@@ -1,4 +1,5 @@
 import { HttpError } from "wasp/server";
+import { normalizeInterval } from "./recurrence";
 import type {
   GetInvoices,
   GetInvoice,
@@ -128,6 +129,7 @@ export const createInvoice: CreateInvoice<InvoiceInput, any> = async (
       invoiceFullNumber,
       referenceNumber: args.referenceNumber ?? null,
       recurring: args.recurring ?? false,
+      recurringInterval: args.recurring ? normalizeInterval(args.recurringInterval) : null,
       status: "due",
       subTotal: totals.subTotal,
       discountType: args.discountType || "none",
@@ -266,6 +268,10 @@ export const updateInvoice: UpdateInvoice<
         (args as any).recurring !== undefined
           ? !!(args as any).recurring
           : existing.recurring,
+      recurringInterval:
+        (args as any).recurringInterval !== undefined
+          ? normalizeInterval((args as any).recurringInterval)
+          : existing.recurringInterval,
       invoiceTemplate:
         (args as any).invoiceTemplate ?? existing.invoiceTemplate,
     },

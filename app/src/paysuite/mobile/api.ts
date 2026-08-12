@@ -1,4 +1,5 @@
 import { HttpError } from "wasp/server";
+import { normalizeInterval } from "../invoices/recurrence";
 import type { MobileApi } from "wasp/server/api";
 import type { PrismaClient } from "@prisma/client";
 import {
@@ -727,6 +728,7 @@ export const mobileApi: MobileApi = async (req, res, context) => {
       if (body.dueDate) data.dueDate = new Date(body.dueDate);
       if (body.issueDate) data.issueDate = new Date(body.issueDate);
       if (body.recurring !== undefined) data.recurring = !!body.recurring;
+      if (body.recurringInterval !== undefined) data.recurringInterval = normalizeInterval(body.recurringInterval);
       if (body.invoiceTemplate != null)
         data.invoiceTemplate = Number(body.invoiceTemplate);
       if (body.lines?.length) {

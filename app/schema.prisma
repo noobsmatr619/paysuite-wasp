@@ -303,6 +303,8 @@ model Invoice {
   invoiceFullNumber String
   referenceNumber   String?
   recurring         Boolean  @default(false)
+  // weekly | monthly | yearly — Laravel keeps this on recurring_types.
+  recurringInterval String?
   status            String   @default("due") // paid | due | partially_paid
   subTotal          Float
   discountType      String   @default("none") // none | fixed | percentage

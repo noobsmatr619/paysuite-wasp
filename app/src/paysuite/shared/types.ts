@@ -43,6 +43,8 @@ export type InvoiceInput = {
   note?: string | null;
   invoiceTemplate?: number;
   recurring?: boolean;
+  /** weekly | monthly | yearly; defaults to monthly. */
+  recurringInterval?: string | null;
   lines: LineItemInput[];
   taxes?: TaxLineInput[];
   markAsSent?: boolean;

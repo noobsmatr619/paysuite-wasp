@@ -1,9 +1,10 @@
 import type { RecurringInvoicesJob } from "wasp/server/jobs";
 import { formatDocNumber } from "../shared/tenant";
+import { isOccurrenceDue, nextRecurringDate, normalizeInterval } from "./recurrence";
 
 /**
- * Daily job: for invoices marked recurring, clone a new due invoice
- * when the previous due date has passed (simple monthly recurrence).
+ * Daily job: clone a new due invoice from each recurring source when its next
+ * occurrence falls due, honouring the invoice's weekly/monthly/yearly interval.
  */
 export const recurringInvoicesJob: RecurringInvoicesJob<
   never,
@@ -13,7 +14,6 @@ export const recurringInvoicesJob: RecurringInvoicesJob<
   const candidates = await context.entities.Invoice.findMany({
     where: {
       recurring: true,
-      dueDate: { lte: now },
       status: { in: ["paid", "due", "partially_paid"] },
     },
     include: { details: true, taxes: true },
@@ -21,24 +21,33 @@ export const recurringInvoicesJob: RecurringInvoicesJob<
   });
 
   for (const source of candidates) {
-    // Avoid cloning more than once per calendar month per source number
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const already = await context.entities.Invoice.findFirst({
+    const interval = normalizeInterval(source.recurringInterval);
+
+    // Schedule from the most recent occurrence, or the issue date if none.
+    const lastOccurrence = await context.entities.Invoice.findFirst({
       where: {
         tenantId: source.tenantId,
         referenceNumber: `recurring-of-${source.id}`,
-        createdAt: { gte: monthStart },
       },
+      orderBy: { issueDate: "desc" },
     });
-    if (already) continue;
+
+    if (!isOccurrenceDue(source.issueDate, lastOccurrence?.issueDate ?? null, interval, now)) {
+      continue;
+    }
 
     const last = await context.entities.Invoice.findFirst({
       where: { tenantId: source.tenantId },
       orderBy: { invoiceNumber: "desc" },
     });
     const invoiceNumber = (last?.invoiceNumber || 0) + 1;
-    const issueDate = new Date();
-    const dueDate = new Date(Date.now() + 30 * 86400000);
+    const issueDate = nextRecurringDate(lastOccurrence?.issueDate ?? source.issueDate, interval);
+    // Preserve the source's issue-to-due gap rather than assuming 30 days.
+    const termDays = Math.max(
+      0,
+      Math.round((source.dueDate.getTime() - source.issueDate.getTime()) / 86400000)
+    );
+    const dueDate = new Date(issueDate.getTime() + termDays * 86400000);
 
     await context.entities.Invoice.create({
       data: {
@@ -50,7 +59,9 @@ export const recurringInvoicesJob: RecurringInvoicesJob<
         invoiceNumber,
         invoiceFullNumber: formatDocNumber("INV", invoiceNumber),
         referenceNumber: `recurring-of-${source.id}`,
-        recurring: true,
+        // Generated occurrences are not themselves sources. Marking them
+        // recurring made every clone spawn its own series.
+        recurring: false,
         status: "due",
         subTotal: source.subTotal,
         discountType: source.discountType,
