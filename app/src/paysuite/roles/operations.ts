@@ -159,6 +159,31 @@ export const assignUserRole: AssignUserRole<
   });
 };
 
+/**
+ * Remove a role from a user — Laravel detach-user-role/{user}.
+ * assignUserRole covered attach; there was no way to take a role back, so a
+ * mis-assignment could only be undone in the database.
+ *
+ * Deleting a link that is not there is treated as success: the caller's intent
+ * is "this user should not hold this role", and that is already true.
+ */
+export const unassignUserRole: any = async (args: any, context: any) => {
+  if (!context.user) throw new HttpError(401);
+  const tenantId = await requireTenantId(context.user, context.entities);
+  await assertPermission(context.entities as any, context.user.id, "users.manage");
+
+  const [user, role] = await Promise.all([
+    context.entities.User.findFirst({ where: { id: args.userId, tenantId } }),
+    context.entities.Role.findFirst({ where: { id: args.roleId, tenantId } }),
+  ]);
+  if (!user || !role) throw new HttpError(404, "User or role not found");
+
+  const { count } = await context.entities.RoleUser.deleteMany({
+    where: { roleId: role.id, userId: user.id },
+  });
+  return { removed: count > 0 };
+};
+
 export const getNotifications: GetNotifications<void, any[]> = async (
   _args,
   context,

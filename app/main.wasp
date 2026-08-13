@@ -890,6 +890,11 @@ action assignUserRole {
   entities: [User, Tenant, Plan, Subscriber, Role, RoleUser]
 }
 
+action unassignUserRole {
+  fn: import { unassignUserRole } from "@src/paysuite/roles/operations",
+  entities: [User, Tenant, Plan, Subscriber, Role, RoleUser]
+}
+
 query getNotifications {
   fn: import { getNotifications } from "@src/paysuite/roles/operations",
   entities: [Notification]
