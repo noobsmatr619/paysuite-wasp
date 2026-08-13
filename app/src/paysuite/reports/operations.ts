@@ -169,3 +169,189 @@ export const getLandlordReports: GetLandlordReports<void, any> = async (
     tenants,
   };
 };
+
+/**
+ * Report endpoints Laravel serves that had no Wasp equivalent:
+ * income-expense-summary, income-yearly-chart, expense-yearly-chart,
+ * payment-yearly-summary, invoice-overview, exist-mail-setup and
+ * role-without-users.
+ *
+ * Laravel counts income as paid invoices by issue_date, and expense by date;
+ * the monthly buckets and the profit column follow that.
+ */
+const MONTH_LABELS = [
+  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
+];
+
+function yearBounds(year: number) {
+  return { from: new Date(year, 0, 1), to: new Date(year, 11, 31, 23, 59, 59) };
+}
+
+/** Monthly income, expense and profit — Laravel incomeExpenseSummary(). */
+export const getIncomeExpenseSummary: any = async (args: any, context: any) => {
+  if (!context.user) throw new HttpError(401);
+  const tenantId = await requireTenantId(context.user, context.entities);
+  const year = Number(args?.year) || new Date().getFullYear();
+  const { from, to } = yearBounds(year);
+
+  const [invoices, expenses] = await Promise.all([
+    context.entities.Invoice.findMany({
+      where: { tenantId, status: "paid", issueDate: { gte: from, lte: to } },
+    }),
+    context.entities.Expense.findMany({
+      where: { tenantId, date: { gte: from, lte: to } },
+    }),
+  ]);
+
+  const months = MONTH_LABELS.map((label, i) => ({
+    month: label,
+    monthNumber: i + 1,
+    income: 0,
+    expense: 0,
+    profit: 0,
+  }));
+
+  for (const invoice of invoices) months[new Date(invoice.issueDate).getMonth()].income += invoice.grandTotal;
+  for (const expense of expenses) months[new Date(expense.date).getMonth()].expense += expense.amount;
+  for (const m of months) m.profit = Math.round((m.income - m.expense) * 100) / 100;
+
+  return {
+    year,
+    months,
+    totals: {
+      income: months.reduce((s, m) => s + m.income, 0),
+      expense: months.reduce((s, m) => s + m.expense, 0),
+      profit: months.reduce((s, m) => s + m.profit, 0),
+    },
+  };
+};
+
+/** Paid invoice totals per month — Laravel income yearlyChart(). */
+export const getIncomeYearlyChart: any = async (args: any, context: any) => {
+  if (!context.user) throw new HttpError(401);
+  const tenantId = await requireTenantId(context.user, context.entities);
+  const year = Number(args?.year) || new Date().getFullYear();
+  const { from, to } = yearBounds(year);
+
+  const invoices = await context.entities.Invoice.findMany({
+    where: { tenantId, status: "paid", issueDate: { gte: from, lte: to } },
+  });
+  const months = MONTH_LABELS.map((label) => ({ month: label, total: 0 }));
+  for (const invoice of invoices) months[new Date(invoice.issueDate).getMonth()].total += invoice.grandTotal;
+  return { year, months };
+};
+
+/** Expense totals per month — Laravel expense yearlyChart(). */
+export const getExpenseYearlyChart: any = async (args: any, context: any) => {
+  if (!context.user) throw new HttpError(401);
+  const tenantId = await requireTenantId(context.user, context.entities);
+  const year = Number(args?.year) || new Date().getFullYear();
+  const { from, to } = yearBounds(year);
+
+  const expenses = await context.entities.Expense.findMany({
+    where: { tenantId, date: { gte: from, lte: to } },
+  });
+  const months = MONTH_LABELS.map((label) => ({ month: label, total: 0 }));
+  for (const expense of expenses) months[new Date(expense.date).getMonth()].total += expense.amount;
+  return { year, months };
+};
+
+/** Received payments per month — Laravel payment yearlySummary(). */
+export const getPaymentYearlySummary: any = async (args: any, context: any) => {
+  if (!context.user) throw new HttpError(401);
+  const tenantId = await requireTenantId(context.user, context.entities);
+  const year = Number(args?.year) || new Date().getFullYear();
+  const { from, to } = yearBounds(year);
+
+  const transactions = await context.entities.Transaction.findMany({
+    where: { tenantId, receivedOn: { gte: from, lte: to } },
+  });
+  const months = MONTH_LABELS.map((label) => ({ month: label, total: 0, count: 0 }));
+  for (const t of transactions) {
+    const m = months[new Date(t.receivedOn).getMonth()];
+    m.total += t.amount;
+    m.count += 1;
+  }
+  return {
+    year,
+    months,
+    totals: {
+      amount: months.reduce((s, m) => s + m.total, 0),
+      count: months.reduce((s, m) => s + m.count, 0),
+    },
+  };
+};
+
+/** Invoice counts and value by status — Laravel invoiceOverview(). */
+export const getInvoiceOverview: any = async (args: any, context: any) => {
+  if (!context.user) throw new HttpError(401);
+  const tenantId = await requireTenantId(context.user, context.entities);
+  const year = Number(args?.year) || new Date().getFullYear();
+  const { from, to } = yearBounds(year);
+
+  const invoices = await context.entities.Invoice.findMany({
+    where: { tenantId, issueDate: { gte: from, lte: to } },
+  });
+
+  const byStatus = new Map<string, { status: string; count: number; total: number; due: number }>();
+  for (const invoice of invoices) {
+    const row = byStatus.get(invoice.status) ?? {
+      status: invoice.status,
+      count: 0,
+      total: 0,
+      due: 0,
+    };
+    row.count += 1;
+    row.total += invoice.grandTotal;
+    row.due += Math.max(0, invoice.grandTotal - invoice.receivedAmount);
+    byStatus.set(invoice.status, row);
+  }
+
+  return {
+    year,
+    statuses: [...byStatus.values()].sort((a, b) => b.total - a.total),
+    totals: {
+      count: invoices.length,
+      value: invoices.reduce((s: number, i: any) => s + i.grandTotal, 0),
+      due: invoices.reduce((s: number, i: any) => s + Math.max(0, i.grandTotal - i.receivedAmount), 0),
+    },
+  };
+};
+
+/**
+ * Whether outgoing mail is configured — Laravel isExists(), which answers 1/0.
+ * The provider is Dummy until real SMTP credentials are set, so this reports
+ * what is configured rather than claiming delivery works.
+ */
+export const getMailSetupExists: any = async (_args: void, context: any) => {
+  if (!context.user) throw new HttpError(401);
+  const tenantId = await requireTenantId(context.user, context.entities, { allowExpired: true });
+  const row = await context.entities.Customization.findFirst({
+    where: { tenantId, key: "email_settings" },
+  });
+  let configured = false;
+  try {
+    const value = row?.value ? JSON.parse(row.value) : null;
+    configured = Boolean(value && value.host && value.from_address);
+  } catch {
+    configured = false;
+  }
+  return { exists: configured ? 1 : 0, configured };
+};
+
+/** Roles with nobody assigned — Laravel roleWithoutUsers(), used before delete. */
+export const getRolesWithoutUsers: any = async (_args: void, context: any) => {
+  if (!context.user) throw new HttpError(401);
+  const tenantId = await requireTenantId(context.user, context.entities);
+  const roles = await context.entities.Role.findMany({ where: { tenantId } });
+  if (!roles.length) return [];
+
+  const assignments = await context.entities.RoleUser.findMany({
+    where: { roleId: { in: roles.map((r: any) => r.id) } },
+  });
+  const used = new Set(assignments.map((a: any) => a.roleId));
+  return roles
+    .filter((role: any) => !used.has(role.id))
+    .map((role: any) => ({ id: role.id, name: role.name, description: role.description }));
+};

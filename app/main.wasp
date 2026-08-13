@@ -784,6 +784,41 @@ page LandlordReportsPage {
   component: import LandlordReportsPage from "@src/paysuite/reports/LandlordReportsPage"
 }
 
+query getIncomeExpenseSummary {
+  fn: import { getIncomeExpenseSummary } from "@src/paysuite/reports/operations",
+  entities: [User, Tenant, Plan, Subscriber, Invoice, Expense]
+}
+
+query getIncomeYearlyChart {
+  fn: import { getIncomeYearlyChart } from "@src/paysuite/reports/operations",
+  entities: [User, Tenant, Plan, Subscriber, Invoice]
+}
+
+query getExpenseYearlyChart {
+  fn: import { getExpenseYearlyChart } from "@src/paysuite/reports/operations",
+  entities: [User, Tenant, Plan, Subscriber, Expense]
+}
+
+query getPaymentYearlySummary {
+  fn: import { getPaymentYearlySummary } from "@src/paysuite/reports/operations",
+  entities: [User, Tenant, Plan, Subscriber, Transaction]
+}
+
+query getInvoiceOverview {
+  fn: import { getInvoiceOverview } from "@src/paysuite/reports/operations",
+  entities: [User, Tenant, Plan, Subscriber, Invoice]
+}
+
+query getMailSetupExists {
+  fn: import { getMailSetupExists } from "@src/paysuite/reports/operations",
+  entities: [User, Tenant, Plan, Subscriber, Customization]
+}
+
+query getRolesWithoutUsers {
+  fn: import { getRolesWithoutUsers } from "@src/paysuite/reports/operations",
+  entities: [User, Tenant, Plan, Subscriber, Role, RoleUser]
+}
+
 query getTenantReports {
   fn: import { getTenantReports } from "@src/paysuite/reports/operations",
   entities: [User, Tenant, Plan, Subscriber, Transaction, Expense, Invoice]
