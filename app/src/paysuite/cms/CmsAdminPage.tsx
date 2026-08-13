@@ -72,6 +72,14 @@ export default function CmsAdminPage() {
     >
       {msg && <p className="mb-4 text-sm text-emerald-700">{msg}</p>}
 
+      <SectionHeadings
+        contents={data.contents || []}
+        onSaved={() => {
+          setMsg("Section headings saved");
+          refetch();
+        }}
+      />
+
       <section className="bg-card mb-8 space-y-2 rounded-xl border p-4">
         <h2 className="font-semibold">Hero title</h2>
         <Input
@@ -298,5 +306,95 @@ export default function CmsAdminPage() {
         </DataTable>
       </section>
     </PageShell>
+  );
+}
+
+/**
+ * Laravel landlord basic-settings: the heading and sub-heading for each
+ * landing-page section. Laravel requires every field, so Save is blocked until
+ * they are all filled, matching that validator.
+ */
+const HEADING_FIELDS: { key: string; label: string; max: number }[] = [
+  { key: "work_solution_title", label: "Work solution title", max: 100 },
+  { key: "work_solution_sub_title", label: "Work solution sub title", max: 190 },
+  { key: "plan_title", label: "Plan title", max: 100 },
+  { key: "plan_sub_title", label: "Plan sub title", max: 190 },
+  { key: "testimonial_title", label: "Testimonial title", max: 100 },
+  { key: "testimonial_sub_title", label: "Testimonial sub title", max: 190 },
+  { key: "subscribe_title", label: "Subscribe title", max: 100 },
+  { key: "subscribe_sub_title", label: "Subscribe sub title", max: 190 },
+  { key: "subscribe_heading", label: "Subscribe heading", max: 190 },
+  {
+    key: "frequently_asked_question_title",
+    label: "FAQ title",
+    max: 100,
+  },
+];
+
+function SectionHeadings({
+  contents,
+  onSaved,
+}: {
+  contents: any[];
+  onSaved: () => void;
+}) {
+  const stored = (key: string) =>
+    contents.find((c: any) => c.key === key)?.value || "";
+  const [values, setValues] = useState<Record<string, string>>({});
+  const [error, setError] = useState("");
+
+  const valueOf = (key: string) => values[key] ?? stored(key);
+  const tooLong = HEADING_FIELDS.filter(
+    (f) => valueOf(f.key).length > f.max,
+  );
+  const empty = HEADING_FIELDS.filter((f) => !valueOf(f.key).trim());
+
+  return (
+    <section className="bg-card mb-8 space-y-3 rounded-xl border p-4">
+      <h2 className="font-semibold">Section headings</h2>
+      <div className="grid gap-3 sm:grid-cols-2">
+        {HEADING_FIELDS.map((field) => (
+          <label key={field.key} className="block space-y-1">
+            <span className="text-muted-foreground text-xs">
+              {field.label} (max {field.max})
+            </span>
+            <Input
+              value={valueOf(field.key)}
+              onChange={(e) =>
+                setValues((v) => ({ ...v, [field.key]: e.target.value }))
+              }
+            />
+          </label>
+        ))}
+      </div>
+      {!!error && <p className="text-sm text-rose-600">{error}</p>}
+      <Button
+        size="sm"
+        disabled={!!tooLong.length || !!empty.length}
+        onClick={async () => {
+          setError("");
+          try {
+            for (const field of HEADING_FIELDS) {
+              await upsertCmsContent({
+                key: field.key,
+                value: valueOf(field.key).trim(),
+              });
+            }
+            onSaved();
+          } catch (e: any) {
+            setError(e?.message || "Save failed");
+          }
+        }}
+      >
+        Save headings
+      </Button>
+      {(!!tooLong.length || !!empty.length) && (
+        <p className="text-muted-foreground text-xs">
+          {empty.length
+            ? `${empty.length} field(s) still empty`
+            : `${tooLong.length} field(s) over the limit`}
+        </p>
+      )}
+    </section>
   );
 }

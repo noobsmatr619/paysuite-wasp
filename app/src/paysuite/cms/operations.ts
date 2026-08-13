@@ -122,6 +122,19 @@ export const seedCmsDefaults: any = async (_args: void, context: any) => {
           body: "JWT mobile surface matching Flutter auth, CRUD, and billing.",
         },
       ]),
+    // Laravel landlord basic-settings — the section headings on the landing
+    // page. Kept under the same keys the Laravel validator uses.
+    work_solution_sub_title:
+      "Three steps from signup to your first paid invoice.",
+    plan_title: "Simple, predictable pricing",
+    plan_sub_title: "Pick a plan that matches your team; change it any time.",
+    testimonial_title: "Teams that switched",
+    testimonial_sub_title: "What our customers say after moving to PaySuite.",
+    subscribe_title: "Stay in the loop",
+    subscribe_sub_title:
+      "Product updates and billing tips, once a month, no noise.",
+    subscribe_heading: "Subscribe to our newsletter",
+    frequently_asked_question_title: "Frequently asked questions",
     work_solution_title: "How it works",
     work_solution_body:
       JSON.stringify([

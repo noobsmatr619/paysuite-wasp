@@ -1039,7 +1039,8 @@ api mobileApi {
     User, Tenant, Plan, Subscriber, Customer, Product, Invoice, Estimate,
     Expense, Ticket, TicketComment, Transaction, PaymentMethod, Category, Department, Priority,
     InvoiceDetail, InvoiceTax, Tax, EstimateDetail, EstimateTax, RoleUser,
-    Note, Notification, Role, UserInvite, Unit, BillingHistory, Customization
+    Note, Notification, Role, UserInvite, Unit, BillingHistory, Customization,
+    PlanOrder
   ],
   // Express 5 / path-to-regexp requires a named wildcard (not bare /*)
   httpRoute: (ALL, "/api/mobile/*path")

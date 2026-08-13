@@ -832,6 +832,29 @@ export const mobileApi: MobileApi = async (req, res, context) => {
         return res.status(201).json({ ...clone, dueAmount: dueAmount(clone) });
       }
     }
+    // Email the invoice to its customer. Laravel: invoice-send-attachment.
+    if (
+      (path.match(/^invoices\/[^/]+\/send-attachment$/) ||
+        path.match(/^invoice-send-attachment\/[^/]+$/)) &&
+      method === "POST"
+    ) {
+      const id = path.split("/")[1];
+      const invoice = await E.Invoice.findFirst({
+        where: { id, tenantId },
+        include: { customer: true, tenant: true },
+      });
+      if (!invoice) throw new HttpError(404, "Invoice not found");
+      const to = body?.email || invoice.customer.email;
+      if (!to) throw new HttpError(400, "Customer has no email address");
+      await emailSender.send({
+        to,
+        subject: `Invoice ${invoice.invoiceFullNumber} from ${invoice.tenant.name}`,
+        text: `Invoice ${invoice.invoiceFullNumber}. Total ${invoice.grandTotal}.`,
+        html: `<p>Hello ${customerDisplay(invoice.customer)},</p>
+          <p>Invoice <strong>${invoice.invoiceFullNumber}</strong> total <strong>${invoice.grandTotal}</strong>, due ${invoice.dueDate.toLocaleDateString()}.</p>`,
+      });
+      return res.json({ message: "Invoice sent", result: { to } });
+    }
     if (path.startsWith("invoices/") && method === "DELETE") {
       const id = path.split("/")[1];
       const existing = await E.Invoice.findFirst({ where: { id, tenantId } });
@@ -1232,6 +1255,8 @@ export const mobileApi: MobileApi = async (req, res, context) => {
     if (
       (path === "payment-methods" ||
         path === "selected/payment-methods" ||
+        // Laravel serves the subscription gateways from the landlord side.
+        path === "admin/landlord/support/payment-methods" ||
         path === "selected/customer-payment-method") &&
       method === "GET"
     ) {
@@ -1465,6 +1490,62 @@ export const mobileApi: MobileApi = async (req, res, context) => {
         },
       });
       return res.status(201).json(invite);
+    }
+
+    // Renew an outstanding subscription billing. Laravel: pay-now/{billing}.
+    if (
+      (path.match(/^pay-now\/[^/]+$/) ||
+        path.match(/^billings\/[^/]+\/pay-now$/)) &&
+      method === "POST"
+    ) {
+      const billingId = path.startsWith("pay-now/")
+        ? path.split("/")[1]
+        : path.split("/")[1];
+      const billing = await E.BillingHistory.findFirst({
+        where: { id: billingId, tenantId },
+        include: { plan: true },
+      });
+      if (!billing) throw new HttpError(404, "Billing not found");
+      if (billing.plan.isFree) {
+        throw new HttpError(
+          400,
+          "This is a free plan, You don't need to pay anything",
+        );
+      }
+      if (billing.status === "paid") {
+        throw new HttpError(400, "Already billing has been paid");
+      }
+
+      const method_ = String(body.payment_method || body.paymentMethod || "");
+      if (method_ !== "stripe" && method_ !== "paypal") {
+        throw new HttpError(400, "payment_method must be stripe or paypal");
+      }
+
+      const reference = `${billing.invoiceNumber}-${Date.now()}`;
+      const order = await E.PlanOrder.create({
+        data: {
+          transactionId: reference,
+          planId: billing.planId,
+          tenantId,
+          userId: user.id,
+          status: "open",
+        },
+      });
+      const base =
+        process.env.PAYPAL_CHECKOUT_BASE || "https://www.paypal.com/checkoutnow";
+      return res.json({
+        message: "Order opened",
+        result: {
+          orderId: order.id,
+          gateway: method_,
+          amount: billing.amount,
+          reference,
+          url:
+            method_ === "paypal"
+              ? `${base}?amount=${encodeURIComponent(String(billing.amount))}&currency=USD&ref=${encodeURIComponent(reference)}`
+              : null,
+        },
+      });
     }
 
     // Billing history + plan activate
