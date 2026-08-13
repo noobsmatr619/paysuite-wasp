@@ -33,7 +33,7 @@ const invoiceInclude = {
 } as const;
 
 export const getInvoices: GetInvoices<
-  { search?: string; status?: string; customerId?: string },
+  { search?: string; status?: string; customerId?: string; recurring?: boolean },
   any[]
 > = async (args, context) => {
   if (!context.user) throw new HttpError(401);
@@ -43,6 +43,8 @@ export const getInvoices: GetInvoices<
     where: {
       tenantId,
       ...(args?.status ? { status: args.status } : {}),
+      // Laravel's RecurringInvoiceController lists only the recurring series.
+      ...(args?.recurring !== undefined ? { recurring: args.recurring } : {}),
       ...(args?.customerId ? { customerId: args.customerId } : {}),
       ...(args?.search
         ? {

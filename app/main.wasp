@@ -292,6 +292,12 @@ action createUnit {
 //#endregion
 
 //#region Invoices
+route RecurringInvoicesRoute { path: "/recurring-invoices", to: RecurringInvoicesPage }
+page RecurringInvoicesPage {
+  authRequired: true,
+  component: import RecurringInvoicesPage from "@src/paysuite/invoices/RecurringInvoicesPage"
+}
+
 route InvoicesRoute { path: "/invoices", to: InvoicesPage }
 page InvoicesPage {
   authRequired: true,

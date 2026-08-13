@@ -10,6 +10,7 @@ export const demoNavigationitems: NavigationItem[] = [
   { name: "Dashboard", to: routes.DashboardRoute.to },
   { name: "Customers", to: routes.CustomersRoute.to },
   { name: "Invoices", to: routes.InvoicesRoute.to },
+  { name: "Recurring", to: routes.RecurringInvoicesRoute.to },
   { name: "Estimates", to: routes.EstimatesRoute.to },
   { name: "Products", to: routes.ProductsRoute.to },
   { name: "Expenses", to: routes.ExpensesRoute.to },
