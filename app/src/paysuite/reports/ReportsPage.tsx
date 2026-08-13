@@ -1,10 +1,13 @@
+import { useState } from "react";
 import { useQuery } from "wasp/client/operations";
 import { getTenantReports } from "wasp/client/operations";
 import { PageShell, StatCard, money, DataTable } from "../shared/ui";
 
 export default function ReportsPage() {
-  const year = new Date().getFullYear();
+  const thisYear = new Date().getFullYear();
+  const [year, setYear] = useState(thisYear);
   const { data, isLoading } = useQuery(getTenantReports, { year });
+  const yearOptions = [thisYear - 2, thisYear - 1, thisYear, thisYear + 1];
 
   if (isLoading || !data) {
     return (
@@ -19,6 +22,19 @@ export default function ReportsPage() {
       title="Income & expense reports"
       subtitle={`Year ${data.year} — tenant financial summary`}
     >
+      <div className="mb-4">
+        <select
+          className="border-input bg-background h-10 rounded-md border px-3 text-sm"
+          value={year}
+          onChange={(e) => setYear(Number(e.target.value))}
+        >
+          {yearOptions.map((y) => (
+            <option key={y} value={y}>
+              {y}
+            </option>
+          ))}
+        </select>
+      </div>
       <div className="mb-6 grid gap-4 sm:grid-cols-3">
         <StatCard
           label="Income"
@@ -50,6 +66,38 @@ export default function ReportsPage() {
           </tr>
         ))}
       </DataTable>
+      <div className="mt-8 grid gap-6 lg:grid-cols-2">
+        <div>
+          <h3 className="mb-3 text-sm font-semibold">Expenses by category</h3>
+          <DataTable
+            headers={["Category", "Amount"]}
+            empty={!data.expenseByCategory?.length}
+          >
+            {(data.expenseByCategory || []).map((row: any) => (
+              <tr key={row.name}>
+                <td className="px-4 py-2">{row.name}</td>
+                <td className="px-4 py-2 text-rose-600">{money(row.amount)}</td>
+              </tr>
+            ))}
+          </DataTable>
+        </div>
+
+        <div>
+          <h3 className="mb-3 text-sm font-semibold">Payments by customer</h3>
+          <DataTable
+            headers={["Customer", "Payments", "Amount"]}
+            empty={!data.paymentsByCustomer?.length}
+          >
+            {(data.paymentsByCustomer || []).map((row: any) => (
+              <tr key={row.name}>
+                <td className="px-4 py-2">{row.name}</td>
+                <td className="px-4 py-2">{row.count}</td>
+                <td className="px-4 py-2 text-emerald-600">{money(row.amount)}</td>
+              </tr>
+            ))}
+          </DataTable>
+        </div>
+      </div>
     </PageShell>
   );
 }

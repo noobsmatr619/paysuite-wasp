@@ -15,9 +15,11 @@ export const getTenantReports: GetTenantReports<
   const [transactions, expenses, invoices] = await Promise.all([
     context.entities.Transaction.findMany({
       where: { tenantId, receivedOn: { gte: from, lte: to } },
+      include: { customer: true },
     }),
     context.entities.Expense.findMany({
       where: { tenantId, date: { gte: from, lte: to } },
+      include: { category: true },
     }),
     context.entities.Invoice.findMany({
       where: { tenantId, issueDate: { gte: from, lte: to } },
@@ -42,9 +44,36 @@ export const getTenantReports: GetTenantReports<
     months[m].invoiced += inv.grandTotal;
   }
 
+  // Laravel serves these as expense-category-chart and
+  // payment-customer-summary; both were missing here.
+  const byCategory = new Map<string, number>();
+  for (const expense of expenses) {
+    const name = (expense as any).category?.name ?? "Uncategorised";
+    byCategory.set(name, (byCategory.get(name) ?? 0) + expense.amount);
+  }
+  const expenseByCategory = [...byCategory.entries()]
+    .map(([name, amount]) => ({ name, amount }))
+    .sort((a, b) => b.amount - a.amount);
+
+  const byCustomer = new Map<string, { name: string; amount: number; count: number }>();
+  for (const transaction of transactions) {
+    const customer = (transaction as any).customer;
+    const key = customer?.id ?? "unknown";
+    const name = customer
+      ? [customer.firstName, customer.lastName].filter(Boolean).join(" ") || customer.email || "Customer"
+      : "Unattributed";
+    const entry = byCustomer.get(key) ?? { name, amount: 0, count: 0 };
+    entry.amount += transaction.amount;
+    entry.count += 1;
+    byCustomer.set(key, entry);
+  }
+  const paymentsByCustomer = [...byCustomer.values()].sort((a, b) => b.amount - a.amount);
+
   return {
     year,
     months,
+    expenseByCategory,
+    paymentsByCustomer,
     totals: {
       income: months.reduce((s, m) => s + m.income, 0),
       expense: months.reduce((s, m) => s + m.expense, 0),
