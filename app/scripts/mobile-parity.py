@@ -46,6 +46,11 @@ ALIAS = {
 # Routes the Wasp API intentionally does not serve, with the reason.
 KNOWN_ABSENT = {
     "customer-resend-portal-access/": "no matching Laravel route exists either",
+    # The Flutter repository declares getTutorialData(), but the Laravel backend
+    # has no tutorials route, controller, model or migration — the constant
+    # points at an endpoint that never existed. Serving one would be inventing a
+    # feature the original does not have, not converting it.
+    "tutorials": "no Laravel route, controller or model exists for it",
 }
 
 
