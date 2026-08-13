@@ -212,7 +212,7 @@ query getCustomer {
 
 action createCustomer {
   fn: import { createCustomer } from "@src/paysuite/customers/operations",
-  entities: [User, Tenant, Plan, Subscriber, Customer, RoleUser]
+  entities: [User, Tenant, Plan, Subscriber, Customer, Product, Invoice, Estimate, RoleUser]
 }
 
 action updateCustomer {
