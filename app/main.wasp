@@ -217,12 +217,12 @@ action createCustomer {
 
 action updateCustomer {
   fn: import { updateCustomer } from "@src/paysuite/customers/operations",
-  entities: [User, Tenant, Plan, Subscriber, Customer]
+  entities: [User, Tenant, Plan, Subscriber, Customer, RoleUser]
 }
 
 action deleteCustomer {
   fn: import { deleteCustomer } from "@src/paysuite/customers/operations",
-  entities: [User, Tenant, Plan, Subscriber, Customer]
+  entities: [User, Tenant, Plan, Subscriber, Customer, RoleUser]
 }
 //#endregion
 
@@ -262,12 +262,12 @@ action createProduct {
 
 action updateProduct {
   fn: import { updateProduct } from "@src/paysuite/products/operations",
-  entities: [User, Tenant, Plan, Subscriber, Product]
+  entities: [User, Tenant, Plan, Subscriber, Product, RoleUser]
 }
 
 action deleteProduct {
   fn: import { deleteProduct } from "@src/paysuite/products/operations",
-  entities: [User, Tenant, Plan, Subscriber, Product]
+  entities: [User, Tenant, Plan, Subscriber, Product, RoleUser]
 }
 
 query getCategories {
@@ -277,7 +277,7 @@ query getCategories {
 
 action createCategory {
   fn: import { createCategory } from "@src/paysuite/products/operations",
-  entities: [User, Tenant, Plan, Subscriber, Category]
+  entities: [User, Tenant, Plan, Subscriber, Category, RoleUser]
 }
 
 query getUnits {
@@ -287,7 +287,7 @@ query getUnits {
 
 action createUnit {
   fn: import { createUnit } from "@src/paysuite/products/operations",
-  entities: [User, Tenant, Plan, Subscriber, Unit]
+  entities: [User, Tenant, Plan, Subscriber, Unit, RoleUser]
 }
 //#endregion
 
@@ -339,22 +339,22 @@ action createInvoice {
 
 action updateInvoice {
   fn: import { updateInvoice } from "@src/paysuite/invoices/operations",
-  entities: [User, Tenant, Plan, Subscriber, Invoice, InvoiceDetail, InvoiceTax, Customer, Product]
+  entities: [User, Tenant, Plan, Subscriber, Invoice, InvoiceDetail, InvoiceTax, Customer, Product, RoleUser]
 }
 
 action deleteInvoice {
   fn: import { deleteInvoice } from "@src/paysuite/invoices/operations",
-  entities: [User, Tenant, Plan, Subscriber, Invoice]
+  entities: [User, Tenant, Plan, Subscriber, Invoice, RoleUser]
 }
 
 action cloneInvoice {
   fn: import { cloneInvoice } from "@src/paysuite/invoices/operations",
-  entities: [User, Tenant, Plan, Subscriber, Invoice, InvoiceDetail, InvoiceTax]
+  entities: [User, Tenant, Plan, Subscriber, Invoice, InvoiceDetail, InvoiceTax, RoleUser]
 }
 
 action recordInvoicePayment {
   fn: import { recordInvoicePayment } from "@src/paysuite/invoices/operations",
-  entities: [User, Tenant, Plan, Subscriber, Invoice, Transaction, PaymentMethod]
+  entities: [User, Tenant, Plan, Subscriber, Invoice, Transaction, PaymentMethod, RoleUser]
 }
 
 action ensureInvoicePortalLink {
@@ -441,22 +441,22 @@ action createEstimate {
 
 action updateEstimate {
   fn: import { updateEstimate } from "@src/paysuite/estimates/operations",
-  entities: [User, Tenant, Plan, Subscriber, Estimate, EstimateDetail, EstimateTax, Customer, Product]
+  entities: [User, Tenant, Plan, Subscriber, Estimate, EstimateDetail, EstimateTax, Customer, Product, RoleUser]
 }
 
 action deleteEstimate {
   fn: import { deleteEstimate } from "@src/paysuite/estimates/operations",
-  entities: [User, Tenant, Plan, Subscriber, Estimate]
+  entities: [User, Tenant, Plan, Subscriber, Estimate, RoleUser]
 }
 
 action changeEstimateStatus {
   fn: import { changeEstimateStatus } from "@src/paysuite/estimates/operations",
-  entities: [User, Tenant, Plan, Subscriber, Estimate]
+  entities: [User, Tenant, Plan, Subscriber, Estimate, RoleUser]
 }
 
 action convertEstimateToInvoice {
   fn: import { convertEstimateToInvoice } from "@src/paysuite/estimates/operations",
-  entities: [User, Tenant, Plan, Subscriber, Estimate, EstimateDetail, EstimateTax, Invoice, InvoiceDetail, InvoiceTax]
+  entities: [User, Tenant, Plan, Subscriber, Estimate, EstimateDetail, EstimateTax, Invoice, InvoiceDetail, InvoiceTax, RoleUser]
 }
 
 route EstimatePrintRoute { path: "/estimates/:id/print", to: EstimatePrintPage }
@@ -500,17 +500,17 @@ query getExpense {
 
 action createExpense {
   fn: import { createExpense } from "@src/paysuite/expenses/operations",
-  entities: [User, Tenant, Plan, Subscriber, Expense, Category]
+  entities: [User, Tenant, Plan, Subscriber, Expense, Category, RoleUser]
 }
 
 action updateExpense {
   fn: import { updateExpense } from "@src/paysuite/expenses/operations",
-  entities: [User, Tenant, Plan, Subscriber, Expense]
+  entities: [User, Tenant, Plan, Subscriber, Expense, RoleUser]
 }
 
 action deleteExpense {
   fn: import { deleteExpense } from "@src/paysuite/expenses/operations",
-  entities: [User, Tenant, Plan, Subscriber, Expense]
+  entities: [User, Tenant, Plan, Subscriber, Expense, RoleUser]
 }
 //#endregion
 
@@ -533,12 +533,12 @@ query getPaymentMethods {
 
 action createPaymentMethod {
   fn: import { createPaymentMethod } from "@src/paysuite/transactions/operations",
-  entities: [User, Tenant, Plan, Subscriber, PaymentMethod]
+  entities: [User, Tenant, Plan, Subscriber, PaymentMethod, RoleUser]
 }
 
 action deletePaymentMethod {
   fn: import { deletePaymentMethod } from "@src/paysuite/transactions/operations",
-  entities: [User, Tenant, Plan, Subscriber, PaymentMethod]
+  entities: [User, Tenant, Plan, Subscriber, PaymentMethod, RoleUser]
 }
 //#endregion
 
@@ -609,17 +609,17 @@ query getTaxes {
 
 action createTax {
   fn: import { createTax } from "@src/paysuite/taxes/operations",
-  entities: [User, Tenant, Plan, Subscriber, Tax]
+  entities: [User, Tenant, Plan, Subscriber, Tax, RoleUser]
 }
 
 action updateTax {
   fn: import { updateTax } from "@src/paysuite/taxes/operations",
-  entities: [User, Tenant, Plan, Subscriber, Tax]
+  entities: [User, Tenant, Plan, Subscriber, Tax, RoleUser]
 }
 
 action deleteTax {
   fn: import { deleteTax } from "@src/paysuite/taxes/operations",
-  entities: [User, Tenant, Plan, Subscriber, Tax]
+  entities: [User, Tenant, Plan, Subscriber, Tax, RoleUser]
 }
 
 query getNotes {
