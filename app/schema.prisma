@@ -57,6 +57,8 @@ model User {
   roles                         RoleUser[]
   notifications                 Notification[]
   invitedUsers                  UserInvite[]       @relation("InvitedBy")
+  profile         UserProfile?
+  planOrders      PlanOrder[]
 }
 
 // ─── Multi-tenant company ───────────────────────────────────────────────────
@@ -71,6 +73,9 @@ model Tenant {
   isDeleted       Boolean  @default(false)
 
   users           User[]
+  emailTemplates  EmailTemplate[]
+  planOrders      PlanOrder[]
+  subscriberLogs  SubscriberLog[]
   customers       Customer[]
   products        Product[]
   categories      Category[]
@@ -529,6 +534,8 @@ model Plan {
   status              String   @default("active") // active | inactive
 
   subscribers         Subscriber[]
+  features            FeaturePlan[]
+  planOrders          PlanOrder[]
   billingHistories    BillingHistory[]
 }
 
@@ -550,6 +557,7 @@ model Subscriber {
 
   @@index([tenantId])
   @@index([userId])
+  logs            SubscriberLog[]
 }
 
 model BillingHistory {
@@ -704,4 +712,127 @@ model CmsSiteContent {
   updatedAt DateTime @updatedAt
   key       String   @unique // hero_title, hero_subtitle, contact_email, terms, privacy
   value     String
+}
+
+/// Extended profile fields Laravel keeps in user_profiles, separate from the
+/// auth-bearing User row.
+model UserProfile {
+  id            String    @id @default(uuid())
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  userId        String    @unique
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  firstName     String?
+  lastName      String?
+  gender        String?   // male | female | others
+  phoneNumber   String?
+  phoneCountry  String?
+  address       String?
+  dateOfBirth   DateTime?
+  portalAccess  Boolean   @default(false)
+  taxNo         String?
+}
+
+/// Email/SMS template groups — Laravel template_types.
+model EmailTemplateType {
+  id          String          @id @default(uuid())
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  name        String          @unique
+  displayName String
+  groupName   String
+
+  templates   EmailTemplate[]
+}
+
+/// Laravel templates: a default body the product ships, and a custom body a
+/// tenant may override it with.
+model EmailTemplate {
+  id             String            @id @default(uuid())
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  tenantId       String?
+  tenant         Tenant?           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  subject        String
+  defaultContent String
+  customContent  String?
+  type           String            @default("mail") // sms | mail | database
+
+  templateTypeId String?
+  templateType   EmailTemplateType? @relation(fields: [templateTypeId], references: [id])
+
+  @@index([tenantId, type])
+}
+
+/// Marketing list signups.
+model Newsletter {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  email     String   @unique
+}
+
+/// A capability a plan may grant — Laravel features, joined to plans through
+/// feature_plan.
+model Feature {
+  id        String        @id @default(uuid())
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  name      String        @unique
+  label     String
+  groupName String
+
+  plans     FeaturePlan[]
+}
+
+model FeaturePlan {
+  featureId String
+  feature   Feature @relation(fields: [featureId], references: [id], onDelete: Cascade)
+  planId    String
+  plan      Plan    @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@id([featureId, planId])
+  @@index([featureId, planId])
+}
+
+/// A plan purchase, from checkout through to paid or cancelled.
+model PlanOrder {
+  id            String   @id @default(uuid())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  transactionId String?
+  tenantId      String
+  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  planId        String
+  plan          Plan     @relation(fields: [planId], references: [id])
+  userId        String
+  user          User     @relation(fields: [userId], references: [id])
+
+  status        String   @default("open") // open | paid | cancelled
+
+  @@index([tenantId, status])
+}
+
+/// Subscriber lifecycle events — Laravel keeps these in two tables
+/// (subscriber_expire_reminder_logs, subscriber_user_deletes). One table with a
+/// kind discriminator carries the same information without the duplication.
+model SubscriberLog {
+  id           String   @id @default(uuid())
+  createdAt    DateTime @default(now())
+
+  tenantId     String
+  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  subscriberId String?
+  subscriber   Subscriber? @relation(fields: [subscriberId], references: [id], onDelete: SetNull)
+
+  kind         String   // expire_reminder | user_delete
+  detail       String?
+
+  @@index([tenantId, kind])
 }
