@@ -726,6 +726,64 @@ action updateLandlordCompany {
   entities: [User, Tenant]
 }
 
+//#region Plan pay-now (Laravel PlanBuyController::payNow)
+action payNowBilling {
+  fn: import { payNowBilling } from "@src/paysuite/plans/payNow",
+  entities: [BillingHistory, Plan, PlanOrder, Tenant, User, Subscriber]
+}
+
+query getPlanOrders {
+  fn: import { getPlanOrders } from "@src/paysuite/plans/payNow",
+  entities: [PlanOrder, Plan, Tenant, User, Subscriber]
+}
+//#endregion
+
+//#region Newsletter (Laravel landlord news-latter)
+query getNewsletterSubscribers {
+  fn: import { getNewsletterSubscribers } from "@src/paysuite/newsletter/operations",
+  entities: [Newsletter]
+}
+
+action subscribeNewsletter {
+  fn: import { subscribeNewsletter } from "@src/paysuite/newsletter/operations",
+  entities: [Newsletter]
+}
+
+action deleteNewsletterSubscriber {
+  fn: import { deleteNewsletterSubscriber } from "@src/paysuite/newsletter/operations",
+  entities: [Newsletter]
+}
+
+route NewsletterRoute { path: "/landlord/newsletter", to: NewsletterPage }
+page NewsletterPage {
+  authRequired: true,
+  component: import NewsletterPage from "@src/paysuite/newsletter/NewsletterPage"
+}
+//#endregion
+
+//#region Email templates (Laravel landlord TemplateController)
+query getEmailTemplateTypes {
+  fn: import { getEmailTemplateTypes } from "@src/paysuite/templates/operations",
+  entities: [EmailTemplateType]
+}
+
+query getEmailTemplate {
+  fn: import { getEmailTemplate } from "@src/paysuite/templates/operations",
+  entities: [EmailTemplate, EmailTemplateType]
+}
+
+action updateEmailTemplate {
+  fn: import { updateEmailTemplate } from "@src/paysuite/templates/operations",
+  entities: [EmailTemplate]
+}
+
+route EmailTemplatesRoute { path: "/landlord/email-templates", to: EmailTemplatesPage }
+page EmailTemplatesPage {
+  authRequired: true,
+  component: import EmailTemplatesPage from "@src/paysuite/templates/EmailTemplatesPage"
+}
+//#endregion
+
 route LandlordCompaniesRoute { path: "/landlord/companies", to: LandlordCompaniesPage }
 page LandlordCompaniesPage {
   authRequired: true,
@@ -1007,7 +1065,7 @@ action generateCheckoutSession {
 
 api paymentsWebhook {
   fn: import { paymentsWebhook } from "@src/payment/webhook",
-  entities: [User, Invoice, Transaction, PaymentMethod],
+  entities: [User, Invoice, Transaction, PaymentMethod, BillingHistory, PlanOrder, Tenant],
   middlewareConfigFn: import { paymentsMiddlewareConfigFn } from "@src/payment/webhook",
   httpRoute: (POST, "/payments-webhook")
 }

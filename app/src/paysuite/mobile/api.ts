@@ -1,4 +1,5 @@
 import { HttpError } from "wasp/server";
+import { emailSender } from "wasp/server/email";
 import { normalizeInterval } from "../invoices/recurrence";
 import type { MobileApi } from "wasp/server/api";
 import type { PrismaClient } from "@prisma/client";
@@ -501,6 +502,12 @@ export const mobileApi: MobileApi = async (req, res, context) => {
           },
         }),
       );
+    }
+    if (path.startsWith("products/") && method === "GET") {
+      const id = path.split("/")[1];
+      const row = await E.Product.findFirst({ where: { id, tenantId } });
+      if (!row) throw new HttpError(404);
+      return res.json(row);
     }
     if (path.startsWith("products/") && method === "PUT") {
       const id = path.split("/")[1];
@@ -1866,12 +1873,55 @@ export const mobileApi: MobileApi = async (req, res, context) => {
         filename: `${estimate.estimateFullNumber}.pdf`,
       });
     }
+    // Resend the estimate to the customer. Laravel names this
+    // estimate-resend-mail/{estimate}; the REST form is kept alongside it.
+    if (
+      (path.match(/^estimates\/[^/]+\/resend-mail$/) ||
+        path.match(/^estimate-resend-mail\/[^/]+$/)) &&
+      (method === "GET" || method === "POST")
+    ) {
+      const id = path.split("/")[1];
+      const estimate = await E.Estimate.findFirst({
+        where: { id, tenantId },
+        include: { customer: true, tenant: true },
+      });
+      if (!estimate) throw new HttpError(404, "Estimate not found");
+      const to = body?.email || estimate.customer.email;
+      if (!to) throw new HttpError(400, "Customer has no email address");
+      await emailSender.send({
+        to,
+        subject: `Estimate ${estimate.estimateFullNumber} from ${estimate.tenant.name}`,
+        text: `Estimate ${estimate.estimateFullNumber}. Total ${estimate.grandTotal}.`,
+        html: `<p>Hello ${customerDisplay(estimate.customer)},</p>
+          <p>Estimate <strong>${estimate.estimateFullNumber}</strong> total <strong>${estimate.grandTotal}</strong>.</p>`,
+      });
+      return res.json({ message: "Estimate sent", result: { to } });
+    }
     if (path.startsWith("estimates/") && method === "DELETE") {
       const id = path.split("/")[1];
       const existing = await E.Estimate.findFirst({ where: { id, tenantId } });
       if (!existing) throw new HttpError(404);
       await E.Estimate.delete({ where: { id } });
       return res.json({ ok: true });
+    }
+
+    // Ticket rating (1-5). Laravel names this ticket-rating/{ticket}.
+    if (
+      (path.match(/^tickets\/[^/]+\/rating$/) ||
+        path.match(/^ticket-rating\/[^/]+$/)) &&
+      (method === "POST" || method === "PUT")
+    ) {
+      const id = path.split("/")[1];
+      const t = await E.Ticket.findFirst({ where: { id, tenantId } });
+      if (!t) throw new HttpError(404);
+      const rating = Number(body.rating);
+      if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+        throw new HttpError(400, "Rating must be a whole number from 1 to 5");
+      }
+      return res.json({
+        message: "Thanks for rating this ticket",
+        result: await E.Ticket.update({ where: { id }, data: { rating } }),
+      });
     }
 
     // Ticket status

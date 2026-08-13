@@ -22,6 +22,8 @@ export const demoNavigationitems: NavigationItem[] = [
   { name: "Import", to: routes.ImportExportRoute.to },
   { name: "Landlord", to: routes.LandlordReportsRoute.to },
   { name: "Companies", to: routes.LandlordCompaniesRoute.to },
+  { name: "Newsletter", to: routes.NewsletterRoute.to },
+  { name: "Templates", to: routes.EmailTemplatesRoute.to },
   { name: "CMS", to: routes.CmsAdminRoute.to },
   { name: "Settings", to: routes.SettingsRoute.to },
 ] as const;

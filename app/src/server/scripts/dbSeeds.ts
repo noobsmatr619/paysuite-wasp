@@ -5,6 +5,10 @@ import {
   getSubscriptionPaymentPlanIds,
   SubscriptionStatus,
 } from "../../payment/plans";
+import {
+  EMAIL_TEMPLATE_TYPES,
+  EMAIL_TEMPLATES,
+} from "../../paysuite/templates/defaults";
 
 type MockUserData = Omit<User, "id">;
 
@@ -98,6 +102,48 @@ export async function seedPaySuiteDefaults(prismaClient: PrismaClient) {
         { name: "High" },
         { name: "Urgent" },
       ],
+    });
+  }
+
+  await seedEmailTemplates(prismaClient);
+}
+
+/**
+ * Laravel ships these through its installer seeders. Upserted by name so a
+ * re-seed does not duplicate them or overwrite an admin's custom body.
+ */
+async function seedEmailTemplates(prismaClient: PrismaClient) {
+  for (const type of EMAIL_TEMPLATE_TYPES) {
+    await prismaClient.emailTemplateType.upsert({
+      where: { name: type.name },
+      update: { displayName: type.displayName, groupName: type.groupName },
+      create: { ...type },
+    });
+  }
+
+  for (const template of EMAIL_TEMPLATES) {
+    const type = await prismaClient.emailTemplateType.findUnique({
+      where: { name: template.type },
+    });
+    if (!type) continue;
+    const existing = await prismaClient.emailTemplate.findFirst({
+      where: { templateTypeId: type.id },
+    });
+    if (existing) {
+      // Only refresh the shipped default; customContent belongs to the admin.
+      await prismaClient.emailTemplate.update({
+        where: { id: existing.id },
+        data: { defaultContent: template.defaultContent },
+      });
+      continue;
+    }
+    await prismaClient.emailTemplate.create({
+      data: {
+        subject: template.subject,
+        defaultContent: template.defaultContent,
+        type: "mail",
+        templateTypeId: type.id,
+      },
     });
   }
 }

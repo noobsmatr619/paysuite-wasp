@@ -55,6 +55,7 @@ export const stripeWebhook: PaymentsWebhook = async (
         break;
       case "checkout.session.completed":
         await handlePaySuiteInvoiceCheckout(event, context);
+        await handlePaySuitePlanPayNow(event, context);
         break;
       default:
         throw new UnhandledWebhookEventError(event.type);
@@ -212,6 +213,54 @@ async function handlePaySuiteInvoiceCheckout(
     amountCents,
     stripeSessionId: session.id,
   });
+}
+
+/**
+ * Laravel's pay-now success route: the plan order it opened flips to paid and
+ * the billing it settles is marked paid, which reactivates the tenant.
+ */
+async function handlePaySuitePlanPayNow(
+  event: Stripe.Event,
+  context: {
+    entities: {
+      BillingHistory: any;
+      PlanOrder: any;
+      Tenant: any;
+      User: any;
+    };
+  },
+) {
+  const session = event.data.object as Stripe.Checkout.Session;
+  const billingId = session.metadata?.paysuiteBillingId;
+  if (!billingId || session.metadata?.paysuiteType !== "plan_pay_now") return;
+  if (session.payment_status !== "paid" && session.status !== "complete") return;
+
+  const billing = await context.entities.BillingHistory.findUnique({
+    where: { id: billingId },
+  });
+  if (!billing || billing.status === "paid") return;
+
+  await context.entities.BillingHistory.update({
+    where: { id: billingId },
+    data: { status: "paid", transactionId: session.id },
+  });
+
+  await context.entities.PlanOrder.updateMany({
+    where: { transactionId: session.id, status: "open" },
+    data: { status: "paid" },
+  });
+
+  await context.entities.Tenant.update({
+    where: { id: billing.tenantId },
+    data: { status: "active" },
+  });
+
+  if (billing.paidById) {
+    await context.entities.User.update({
+      where: { id: billing.paidById },
+      data: { subscriptionStatus: "active", datePaid: new Date() },
+    });
+  }
 }
 
 function getOpenSaasSubscriptionStatus(

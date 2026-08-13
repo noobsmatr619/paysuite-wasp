@@ -5,6 +5,7 @@ import {
   ensureDefaultPlans,
   getMyPlan,
   getBillings,
+  payNowBilling,
   activatePlan,
 } from "wasp/client/operations";
 import { PageShell, money, DataTable, StatusBadge } from "../shared/ui";
@@ -16,6 +17,19 @@ export default function PlansPage() {
   const { data: plans, refetch } = useQuery(getPlans);
   const { data: myPlan, refetch: refetchMy } = useQuery(getMyPlan);
   const { data: billings, refetch: refetchBillings } = useQuery(getBillings);
+  const [payError, setPayError] = useState("");
+
+  // Laravel's pay-now: settle an outstanding subscription billing.
+  async function payNow(billingId: string) {
+    setPayError("");
+    try {
+      const intent: any = await payNowBilling({ billingId, paymentMethod: "stripe" });
+      if (intent?.url) window.location.href = intent.url;
+      else setPayError("The gateway returned no checkout URL.");
+    } catch (e: any) {
+      setPayError(e?.message || "Could not start the payment");
+    }
+  }
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
@@ -95,8 +109,9 @@ export default function PlansPage() {
       </div>
 
       <h2 className="mb-3 font-semibold">Billing history</h2>
+      {!!payError && <p className="mb-2 text-sm text-rose-600">{payError}</p>}
       <DataTable
-        headers={["Invoice", "Plan", "Status", "Amount", "Date"]}
+        headers={["Invoice", "Plan", "Status", "Amount", "Date", "Actions"]}
         empty={!billings?.length}
       >
         {(billings || []).map((b: any) => (
@@ -109,6 +124,15 @@ export default function PlansPage() {
             <td className="px-4 py-2">{money(b.amount)}</td>
             <td className="px-4 py-2">
               {new Date(b.createdAt).toLocaleDateString()}
+            </td>
+            <td className="px-4 py-2">
+              {b.status !== "paid" && !b.plan?.isFree ? (
+                <Button size="sm" onClick={() => payNow(b.id)}>
+                  Pay now
+                </Button>
+              ) : (
+                <span className="text-muted-foreground text-sm">—</span>
+              )}
             </td>
           </tr>
         ))}
