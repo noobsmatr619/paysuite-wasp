@@ -701,6 +701,16 @@ action upsertEmailTemplate {
   entities: [User, Tenant, Plan, Subscriber, Customization]
 }
 
+query getAccountDeleteReasons {
+  fn: import { getAccountDeleteReasons } from "@src/paysuite/settings/operations",
+  entities: [User]
+}
+
+action sendTestEmail {
+  fn: import { sendTestEmail } from "@src/paysuite/settings/operations",
+  entities: [User, Tenant, Plan, Subscriber]
+}
+
 action requestAccountDelete {
   fn: import { requestAccountDelete } from "@src/paysuite/settings/operations",
   entities: [User, Tenant, Plan, Subscriber, Customization, Notification]

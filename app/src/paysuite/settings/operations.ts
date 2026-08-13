@@ -1,4 +1,5 @@
 import { HttpError } from "wasp/server";
+import { emailSender } from "wasp/server/email";
 import { requireTenantId } from "../shared/tenant";
 
 export const getCustomizations: any = async (_args: void, context: any) => {
@@ -106,6 +107,54 @@ export const requestAccountDelete: any = async (args: any, context: any) => {
     },
   });
   return { ok: true };
+};
+
+/**
+ * Laravel serves these as GET account-delete-reason. The reasons are a fixed
+ * list there too — the tenant picks one when requesting deletion.
+ */
+export const ACCOUNT_DELETE_REASONS = [
+  "No longer need the service",
+  "Too expensive",
+  "Missing features I need",
+  "Switching to another product",
+  "Difficult to use",
+  "Other",
+] as const;
+
+export const getAccountDeleteReasons: any = async (_args: void, context: any) => {
+  if (!context.user) throw new HttpError(401);
+  return ACCOUNT_DELETE_REASONS.map((reason, index) => ({ id: index + 1, name: reason }));
+};
+
+/**
+ * Laravel EmailDeliveryCheckController::sendTestMail — proves the mail setup
+ * works before a tenant relies on it for invoices.
+ */
+export const sendTestEmail: any = async (args: any, context: any) => {
+  if (!context.user) throw new HttpError(401);
+  await requireTenantId(context.user, context.entities, { allowExpired: true });
+
+  const to = String(args?.emailAddress ?? "").trim();
+  const subject = String(args?.subject ?? "").trim();
+  const body = String(args?.message ?? "").trim();
+
+  // Same three required fields Laravel validates.
+  const errors: string[] = [];
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(to)) errors.push("A valid email address is required");
+  if (!subject) errors.push("Subject is required");
+  if (!body) errors.push("Message is required");
+  if (errors.length) throw new HttpError(422, errors.join(". "));
+
+  try {
+    await emailSender.send({ to, subject, text: body, html: `<p>${body}</p>` });
+  } catch (e) {
+    throw new HttpError(
+      502,
+      e instanceof Error ? `Mail delivery failed: ${e.message}` : "Mail delivery failed",
+    );
+  }
+  return { ok: true, to };
 };
 
 /** Landlord: list companies with filters + status updates */
